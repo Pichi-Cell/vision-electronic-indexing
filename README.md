@@ -13,8 +13,8 @@ The core vision step is a local Python MCP server that sends images to Cloudflar
 
 - Processes one electronics image or a folder of images.
 - Extracts visible IC/package markings, confidence, position hints, and review flags.
-- Runs a second IC consensus pass when multiple ICs are detected in one image.
-- Preserves individual IC marking observations, because the model may read one chip correctly and another incorrectly.
+- Supports multiple different ICs in the same image.
+- Preserves individual IC/package marking observations for audit and review.
 - Saves raw JSON for auditability.
 - Creates `parts_to_lookup.json` for datasheet enrichment.
 - Produces a final CSV, using `datasheet_cache.json` when enrichment is available.
@@ -207,21 +207,17 @@ max_side: 4000
 jpeg_quality: 96
 ```
 
-## IC consensus behavior
+## Multiple-IC behavior
 
-For this lab workflow, the program assumes that all ICs visible in one image should be the same part family/marking.
+Images may contain one IC or many different ICs. The vision step does not force all visible ICs in an image to share one marking or part family.
 
 The processing flow is:
 
-1. First pass: general visible inventory extraction.
-2. If multiple ICs are found, second pass: IC-only consensus verification.
-3. Final output includes:
-   - `items`: one consensus IC item when possible.
-   - `ic_marking_observations`: per-chip marking observations.
-   - `first_pass_items`: original first-pass IC candidates.
-   - `warnings`: notes about consensus verification.
+1. General visible inventory extraction from the image.
+2. Each visible IC/package marking is kept as its own candidate when the model returns it separately.
+3. The batch workflow builds one evidence row per image/candidate part, so a single photo can contribute multiple different BOM rows.
 
-This does not guarantee correct OCR. It helps expose uncertainty and preserves alternate readings.
+This does not guarantee correct OCR. It preserves alternate readings and marks uncertain candidates for review.
 
 ## Main batch workflow
 
@@ -339,7 +335,7 @@ output/inventory.csv
 
 ## Final CSV columns
 
-By default, `inventory.csv` is deduplicated by normalized part number. Multiple images with the same IC become one BOM row with `sighting_count` and an `images` list.
+By default, `inventory.csv` is deduplicated by normalized part number. Multiple images, or multiple candidates from the same image, with the same IC become one BOM row with `sighting_count` and an `images` list.
 
 ```text
 normalized_part
@@ -364,9 +360,9 @@ Example BOM row:
 SN74LS283N,SN74LS283N,8,2,74ls (4 bit) adder low power schottky ttl 5v DIP,https://www.ti.com/lit/ds/symlink/sn74ls283.pdf,Texas Instruments,true,high/low,true,"image_001.jpeg | image_002.jpeg","SN74LS283N | SN74S283N","output/raw/image_001.json | output/raw/image_002.json","Verified against TI datasheet"
 ```
 
-The script also writes `inventory_evidence.csv`, which keeps the non-deduplicated per-image rows used to build the BOM. It includes the same per-sighting `amount` estimate before aggregation.
+The script also writes `inventory_evidence.csv`, which keeps the non-deduplicated per-image/candidate rows used to build the BOM. It includes the same per-sighting `amount` estimate before aggregation.
 
-`amount` is estimated from the vision result's IC count. `sighting_count` is the number of image-level sightings that were merged into the BOM row.
+`amount` is estimated from the number of matching IC candidate items/evidence rows for that candidate. `sighting_count` is the number of evidence rows that were merged into the BOM row.
 
 ## MCP server usage
 
@@ -415,22 +411,22 @@ The server uses MCP `stdio` transport, so it is meant to be launched by an MCP-c
       "package_marking": "SN74LS283N",
       "marking_confidence": "medium",
       "likely_part": "SN74LS283N",
-      "description": "consensus result; 4 visible ICs",
-      "position_hint": "multiple ICs",
-      "needs_review": true
-    }
-  ],
-  "warnings": [
-    "Multi-pass IC consensus verification applied."
-  ],
-  "ic_marking_observations": [
-    {
+      "description": "visible DIP IC marking",
       "position_hint": "top-right",
-      "package_marking": "SN74LS283N F 7936",
-      "marking_confidence": "high"
+      "needs_review": true
+    },
+    {
+      "item_type": "IC",
+      "count_index": 2,
+      "package_marking": "MAX232N",
+      "marking_confidence": "high",
+      "likely_part": "MAX232N",
+      "description": "visible DIP IC marking",
+      "position_hint": "bottom-left",
+      "needs_review": false
     }
   ],
-  "first_pass_items": []
+  "warnings": []
 }
 ```
 
@@ -461,7 +457,7 @@ Handled cases include:
 - Vision models can misread small or blurry IC markings.
 - A higher-resolution or closer photo usually helps more than prompt changes.
 - Full-board photos are useful for context; cropped IC close-ups are better for marking OCR.
-- The consensus pass can enforce one shared IC result, but it can still choose the wrong consensus.
+- Multiple ICs in one image can still be missed or merged by the vision model if markings are small or blurry.
 - Datasheet enrichment should be verified against official sources.
 - The script does not deduplicate the same physical part across multiple images unless you handle that in the enrichment/review step.
 

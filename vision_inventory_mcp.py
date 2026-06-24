@@ -127,59 +127,6 @@ Rules:
 """.strip()
 
 
-def build_ic_consensus_prompt(image_name: str, first_pass: Dict[str, Any]) -> str:
-    first_pass_json = json.dumps(first_pass, indent=2, ensure_ascii=False)
-    return f"""
-Analyze this electronics image again, but focus ONLY on the IC package top markings.
-
-Image filename: {image_name}
-
-Important known constraint for this dataset:
-- All ICs visible in one image should have the same part marking.
-- The previous pass may contain OCR mistakes or hallucinated similar-looking 74LS part numbers.
-- Do not trust the previous pass. Use it only as a list of candidates to verify against the image.
-- Return ONE consensus IC inventory item for the shared marking, not separate items with different markings.
-- If any character is unclear, use [?] in that character position and set needs_review=true.
-- Prefer low confidence with [?] over a confident but guessed part number.
-- Do not use web lookup.
-
-Previous pass to verify:
-{first_pass_json}
-
-Return only valid JSON using this schema:
-
-{{
-  "image": "{image_name}",
-  "items": [
-    {{
-      "item_type": "IC",
-      "count_index": 1,
-      "package_marking": "one consensus visible marking shared by all ICs, or [?]-marked partial text",
-      "marking_confidence": "high | medium | low | unreadable",
-      "likely_part": "same as package_marking if visible, or unknown",
-      "description": "consensus result; include the visible IC count if clear",
-      "position_hint": "multiple ICs / board-wide IC group / etc.",
-      "needs_review": true
-    }}
-  ],
-  "warnings": [],
-  "ic_marking_observations": [
-    {{
-      "position_hint": "where this individual IC appears",
-      "package_marking": "best visible marking for this individual IC, or [?]-marked partial text",
-      "marking_confidence": "high | medium | low | unreadable"
-    }}
-  ]
-}}
-
-Rules:
-- Return JSON only.
-- Return exactly one consensus IC item if ICs are visible.
-- Also list each visible IC's individual marking observation in ic_marking_observations.
-- Individual observations may disagree; do not force them to match. Use [?] for unclear characters.
-- Do not return multiple different consensus IC items.
-""".strip()
-
 
 mcp = FastMCP("Vision Inventory")
 
@@ -521,50 +468,6 @@ def visible_ic_items(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
-def verify_ic_consensus_pass(
-    image_data_url: str,
-    image_name: str,
-    first_pass: Dict[str, Any],
-    account_id: str,
-    api_token: str,
-) -> Dict[str, Any]:
-    """Run a second vision pass that enforces the project rule that all ICs match."""
-    ic_items = visible_ic_items(first_pass)
-    if len(ic_items) < 2:
-        return first_pass
-
-    response_text, cloudflare_error = call_workers_ai(
-        image_data_url=image_data_url,
-        image_name=image_name,
-        user_prompt=build_ic_consensus_prompt(image_name, first_pass),
-        account_id=account_id,
-        api_token=api_token,
-        model=DEFAULT_MODEL,
-    )
-    if cloudflare_error:
-        first_pass.setdefault("warnings", []).append(
-            f"IC consensus verification failed: {cloudflare_error.get('message', 'unknown error')}"
-        )
-        return first_pass
-    assert response_text is not None
-
-    parsed, parse_error = extract_json_object(response_text)
-    if parse_error or parsed is None:
-        first_pass.setdefault("warnings", []).append(
-            f"IC consensus verification returned invalid JSON: {parse_error or 'unknown parse error'}"
-        )
-        first_pass["ic_consensus_raw_response"] = response_text
-        return first_pass
-
-    consensus = normalize_inventory_result(parsed, image_name)
-    previous_markings = [str(item.get("package_marking", "unknown")) for item in ic_items]
-    consensus.setdefault("warnings", []).append("Multi-pass IC consensus verification applied.")
-    consensus.setdefault("warnings", []).append(
-        "First pass IC marking candidates: " + ", ".join(previous_markings)
-    )
-    consensus["first_pass_items"] = first_pass.get("items", [])
-    return consensus
-
 
 def process_image_impl(
     image_path: str,
@@ -615,14 +518,7 @@ def process_image_impl(
             "raw_response": response_text,
         }
 
-    first_pass = normalize_inventory_result(parsed, image_name)
-    return verify_ic_consensus_pass(
-        image_data_url=image_data_url,
-        image_name=image_name,
-        first_pass=first_pass,
-        account_id=account_id,
-        api_token=api_token,
-    )
+    return normalize_inventory_result(parsed, image_name)
 
 
 @mcp.tool()

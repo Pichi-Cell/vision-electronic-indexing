@@ -92,12 +92,8 @@ def candidate_from_item(item: Dict[str, Any]) -> str:
 def extract_part_evidence(image_name: str, result: Dict[str, Any]) -> List[Dict[str, Any]]:
     evidence: List[Dict[str, Any]] = []
 
-    for source, items in (
-        ("items", result.get("items", [])),
-        ("first_pass_items", result.get("first_pass_items", [])),
-    ):
-        if not isinstance(items, list):
-            continue
+    items = result.get("items", [])
+    if isinstance(items, list):
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -108,7 +104,7 @@ def extract_part_evidence(image_name: str, result: Dict[str, Any]) -> List[Dict[
                 continue
             evidence.append({
                 "image": image_name,
-                "source": source,
+                "source": "items",
                 "position_hint": item.get("position_hint", "unknown"),
                 "observed_marking": marking,
                 "candidate_part": candidate_from_item(item),
@@ -229,18 +225,17 @@ def lookup_enrichment(part: str, cache: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def estimate_amount_for_candidate(result: Dict[str, Any], candidate: str) -> int:
-    """Estimate physical IC quantity for one image-level sighting.
+def estimate_amount_for_candidate(result: Dict[str, Any], candidate: str, evidence_count: int = 1) -> int:
+    """Estimate physical IC quantity for one candidate in one image.
 
-    The schema's historical field name is count_index, but in this lab workflow
-    the model often uses it as the count for a grouped consensus item. We sum
-    matching primary items and fall back to one when no usable count is available.
+    Count separate matching IC items. The schema field count_index is treated as
+    an ordinal/index, not a quantity. Fall back to the number of candidate
+    evidence rows when only observations are available.
     """
     items = result.get("items", [])
     if not isinstance(items, list):
-        return 1
+        return max(1, evidence_count)
 
-    amount = 0
     matched = 0
     for item in items:
         if not isinstance(item, dict):
@@ -250,17 +245,10 @@ def estimate_amount_for_candidate(result: Dict[str, Any], candidate: str) -> int
         if candidate_from_item(item).upper() != candidate.upper():
             continue
         matched += 1
-        try:
-            count = int(item.get("count_index", 1))
-        except Exception:
-            count = 1
-        amount += max(1, count)
 
-    if amount > 0:
-        return amount
     if matched > 0:
         return matched
-    return 1
+    return max(1, evidence_count)
 
 
 def image_part_rows(results: List[Dict[str, Any]], cache: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -288,37 +276,41 @@ def image_part_rows(results: List[Dict[str, Any]], cache: Dict[str, Any]) -> Lis
             })
             continue
 
-        # One image contributes one sighting for its most common candidate.
-        counts: Dict[str, int] = defaultdict(int)
+        # One image may contain multiple different IC candidates. Emit one
+        # evidence row per candidate instead of forcing a single image-level part.
+        evidence_by_candidate: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for row in evidence:
-            counts[row["candidate_part"].upper()] += 1
-        candidate = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[0][0]
-        enrichment = lookup_enrichment(candidate, cache)
-        amount = estimate_amount_for_candidate(result, candidate)
-        observed_markings = sorted({row["observed_marking"] for row in evidence})
-        observations = "; ".join(
-            f"{row['position_hint']}: {row['observed_marking']} ({row['marking_confidence']})"
-            for row in evidence
-        )
-        confidence_values = [str(row.get("marking_confidence", "unknown")) for row in evidence]
-        needs_review = any(row.get("needs_review", True) for row in evidence) or not enrichment.get("verified", False)
+            candidate = row["candidate_part"].upper()
+            if candidate and candidate.lower() not in UNKNOWN_MARKINGS:
+                evidence_by_candidate[candidate].append(row)
 
-        rows.append({
-            "image": image_name,
-            "candidate_part": candidate,
-            "normalized_part": enrichment.get("normalized_part", candidate),
-            "amount": amount,
-            "description": enrichment.get("description", ""),
-            "datasheet_url": enrichment.get("datasheet_url", ""),
-            "manufacturer": enrichment.get("manufacturer", ""),
-            "verified": bool(enrichment.get("verified", False)),
-            "vision_confidence": "/".join(sorted(set(confidence_values))),
-            "needs_review": needs_review,
-            "observed_markings": " | ".join(observed_markings),
-            "observations": observations,
-            "raw_json": entry["raw_json"],
-            "notes": enrichment.get("notes", "Missing datasheet enrichment"),
-        })
+        for candidate, candidate_evidence in sorted(evidence_by_candidate.items()):
+            enrichment = lookup_enrichment(candidate, cache)
+            amount = estimate_amount_for_candidate(result, candidate, evidence_count=len(candidate_evidence))
+            observed_markings = sorted({row["observed_marking"] for row in candidate_evidence})
+            observations = "; ".join(
+                f"{row['position_hint']}: {row['observed_marking']} ({row['marking_confidence']})"
+                for row in candidate_evidence
+            )
+            confidence_values = [str(row.get("marking_confidence", "unknown")) for row in candidate_evidence]
+            needs_review = any(row.get("needs_review", True) for row in candidate_evidence) or not enrichment.get("verified", False)
+
+            rows.append({
+                "image": image_name,
+                "candidate_part": candidate,
+                "normalized_part": enrichment.get("normalized_part", candidate),
+                "amount": amount,
+                "description": enrichment.get("description", ""),
+                "datasheet_url": enrichment.get("datasheet_url", ""),
+                "manufacturer": enrichment.get("manufacturer", ""),
+                "verified": bool(enrichment.get("verified", False)),
+                "vision_confidence": "/".join(sorted(set(confidence_values))),
+                "needs_review": needs_review,
+                "observed_markings": " | ".join(observed_markings),
+                "observations": observations,
+                "raw_json": entry["raw_json"],
+                "notes": enrichment.get("notes", "Missing datasheet enrichment"),
+            })
     return rows
 
 
