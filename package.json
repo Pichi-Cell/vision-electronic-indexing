@@ -2,7 +2,37 @@
   "name": "vision-electronic-indexing-mcp-pi",
   "version": "0.1.0",
   "description": "Pi package for agent-assisted electronics/PCB image inventory with Cloudflare Workers AI vision and datasheet enrichment.",
-  "keywords": ["pi-package", "electronics", "pcb", "inventory", "mcp"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pichi-Cell/vision-electronic-indexing-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pichi-Cell/vision-electronic-indexing-mcp/issues"
+  },
+  "homepage": "https://github.com/Pichi-Cell/vision-electronic-indexing-mcp#readme",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "electronics",
+    "pcb",
+    "inventory",
+    "bom",
+    "mcp",
+    "vision",
+    "cloudflare-workers-ai"
+  ],
+  "files": [
+    "LICENSE",
+    "README.md",
+    "requirements.txt",
+    "vision_inventory_mcp.py",
+    "scripts/inventory_folder_to_csv.py",
+    ".pi/extensions/vision-inventory-mcp/README.md",
+    ".pi/extensions/vision-inventory-mcp/index.ts",
+    ".pi/skills/vision-inventory-workflow/SKILL.md",
+    ".pi/prompts/vision-inventory-agent-bom.md"
+  ],
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
