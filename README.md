@@ -270,6 +270,9 @@ The agent should:
 
 - Prefer official manufacturer datasheets or product pages.
 - Keep descriptions short.
+- If exact candidate search fails but official results strongly indicate a likely OCR correction, keep the original candidate as the `datasheet_cache.json` key and set `normalized_part` to the official datasheet part number.
+- Example: if `SN74AS283N` has no official datasheet but official TI results match `SN74LS283N` and the image could plausibly confuse the characters, use key `SN74AS283N`, set `normalized_part` to `SN74LS283N`, and mention the correction in `notes`.
+- Set `verified=true` for OCR corrections only when official source evidence and visual/package context make the correction highly likely.
 - Set `verified=false` if the marking, part number, package, or source is uncertain.
 - Do not invent part numbers, manufacturers, voltages, functions, or datasheet URLs.
 

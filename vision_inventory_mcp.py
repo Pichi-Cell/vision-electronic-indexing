@@ -711,7 +711,7 @@ def flatten_inventory_for_csv(inventory: Dict[str, Any], enrichment_cache: Optio
         enrichment = cache.get(part, {}) if isinstance(cache.get(part, {}), dict) else {}
         rows.append({
             "normalized_part": part,
-            "candidate_parts": " | ".join(sorted({candidate for row in part_rows for candidate in row["candidate_parts"]})),
+            "candidate_parts": ", ".join(sorted({candidate for row in part_rows for candidate in row["candidate_parts"]})),
             "amount": sum(int(row.get("amount", 0) or 0) for row in part_rows),
             "sighting_count": len(part_rows),
             "description": enrichment.get("description", ""),

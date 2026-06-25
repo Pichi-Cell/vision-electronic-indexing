@@ -201,6 +201,9 @@ def build_parts_to_lookup(results: List[Dict[str, Any]]) -> Dict[str, Any]:
             "Use web search to find each part datasheet, preferably from the manufacturer.",
             "Fill output/datasheet_cache.json using the template shape shown in datasheet_cache.template.json.",
             "Keep descriptions short, e.g. '74ls (4 bit) adder low power schottky ttl 5v DIP'.",
+            "If exact candidate search fails but official results strongly indicate a likely OCR correction, keep the original candidate as this cache key and set normalized_part to the official datasheet part number.",
+            "Example: if SN74AS283N appears to be an OCR error for official SN74LS283N, use key SN74AS283N with normalized_part SN74LS283N and explain the correction in notes.",
+            "Only mark verified=true for a correction when the official datasheet and visual/package context make the correction highly likely; otherwise set verified=false and explain in notes.",
             "If the visual marking is uncertain, set verified=false and explain in notes."
         ],
         "parts": parts,
@@ -369,7 +372,7 @@ def write_final_csv(results: List[Dict[str, Any]], cache: Dict[str, Any], output
 
         bom_rows.append({
             "normalized_part": part,
-            "candidate_parts": " | ".join(sorted({str(row["candidate_part"]) for row in rows_for_part if row.get("candidate_part")})),
+            "candidate_parts": ", ".join(sorted({str(row["candidate_part"]) for row in rows_for_part if row.get("candidate_part")})),
             "amount": amount,
             "sighting_count": len(rows_for_part),
             "description": first.get("description", ""),

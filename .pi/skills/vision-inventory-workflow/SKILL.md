@@ -34,5 +34,8 @@ Options are forwarded to `scripts/inventory_folder_to_csv.py`, for example `--re
 - Rerun the Python workflow with `--skip-vision`.
 - Review `inventory.csv` and `inventory_evidence.csv`.
 - Do not invent datasheets, manufacturers, voltages, package names, or descriptions.
+- If exact candidate search fails but official results strongly indicate a likely OCR correction, keep the original candidate as the `datasheet_cache.json` key and set `normalized_part` to the official datasheet part number.
+- Example: if `SN74AS283N` has no official datasheet but official TI results match `SN74LS283N` and the image could plausibly confuse characters, use key `SN74AS283N`, set `normalized_part` to `SN74LS283N`, and explain the correction in `notes`.
+- Only set `verified=true` for corrections when official source evidence and visual/package context make the correction highly likely; otherwise set `verified=false`.
 - Set `verified=false` if uncertain and explain in `notes`.
 - Preserve raw JSON and evidence files.
