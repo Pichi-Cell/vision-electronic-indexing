@@ -1,5 +1,8 @@
-# Vision Electronic Indexing Universal Setup (PowerShell)
-Write-Host "=== Vision Electronic Indexing Universal Setup ===" -ForegroundColor Cyan
+# Vision Electronic Indexing Manual/Legacy Universal Setup (PowerShell)
+Write-Host "=== Vision Electronic Indexing Manual/Legacy Universal Setup ===" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "This helper only installs dependencies and prints manual MCP config steps."
+Write-Host "For the recommended automated universal installer, use .universal/scripts/quick-install.sh."
 Write-Host ""
 
 $UNIVERSAL_DIR = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
@@ -21,7 +24,8 @@ if (-not (Test-Path $ENV_FILE)) {
 }
 
 # 3. MCP config
-Write-Host "[3/3] To configure your agent, copy the appropriate config from .universal\configs\:"
+Write-Host "[3/3] Manual MCP configuration"
+Write-Host "To configure your agent, copy the appropriate config from .universal\configs\:"
 Write-Host ""
 Write-Host "  OpenCode:  copy $UNIVERSAL_DIR\configs\opencode.json.example <project>\.opencode\opencode.json"
 Write-Host "  Claude:    copy $UNIVERSAL_DIR\configs\claude.json.example <project>\.claude\settings.json"
@@ -30,4 +34,4 @@ Write-Host "  Cursor:    copy $UNIVERSAL_DIR\configs\cursor.json.example <projec
 Write-Host ""
 Write-Host "Then edit the file to set the path to $(Join-Path $REPO_ROOT "vision_inventory_mcp.py") and your credentials."
 Write-Host ""
-Write-Host "=== Setup complete ===" -ForegroundColor Cyan
+Write-Host "=== Manual/legacy setup complete ===" -ForegroundColor Cyan
