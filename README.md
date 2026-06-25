@@ -73,7 +73,7 @@ export WORKERS_AI_MODEL=@cf/meta/llama-4-scout-17b-16e-instruct
 
 ## Other harnesses / universal MCP compatibility
 
-_Contributed by user @Brun0-v_ 
+_Contributed by user [@Brun0-v](https://github.com/Brun0-V)_ 
 
 This repository also includes a harness-neutral compatibility layer in `.universal/` for MCP-capable coding agents such as OpenCode, Claude Code, Codex CLI, Cursor, and similar clients.
 
