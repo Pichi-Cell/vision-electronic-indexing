@@ -9,10 +9,12 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SERVER_FILE = "vision_inventory_mcp.py";
-const PYTHON_COMMAND = process.env.PI_VISION_INVENTORY_PYTHON || "python3";
+const BASE_PYTHON_COMMAND = process.env.PI_VISION_INVENTORY_PYTHON || "python3";
 const MAX_RESULT_CHARS = 50_000;
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = join(homedir(), ".pi", "agent", "vision-inventory");
+const VENV_DIR = join(CONFIG_DIR, ".venv");
+const VENV_PYTHON = process.platform === "win32" ? join(VENV_DIR, "Scripts", "python.exe") : join(VENV_DIR, "bin", "python");
 const CREDENTIALS_FILE = join(CONFIG_DIR, "credentials.json");
 
 type VisionCredentials = {
@@ -57,7 +59,8 @@ class McpStdioClient {
       throw new Error(`Cannot find ${SERVER_FILE} in ${this.packageRoot}`);
     }
 
-    this.proc = spawn(PYTHON_COMMAND, [serverPath], {
+    const pythonCommand = await getPythonCommand();
+    this.proc = spawn(pythonCommand, [serverPath], {
       cwd: this.packageRoot,
       env: await buildPythonEnv(),
       stdio: ["pipe", "pipe", "pipe"],
@@ -72,7 +75,7 @@ class McpStdioClient {
       this.lastStderr = (this.lastStderr + chunk).slice(-10_000);
     });
     this.proc.on("error", (error) => {
-      const err = new Error(`Failed to start Vision Inventory MCP server with ${PYTHON_COMMAND}: ${error.message}`);
+      const err = new Error(`Failed to start Vision Inventory MCP server: ${error.message}`);
       for (const pending of this.pending.values()) pending.reject(err);
       this.pending.clear();
       this.initialized = false;
@@ -215,6 +218,44 @@ async function buildPythonEnv(): Promise<NodeJS.ProcessEnv> {
   };
 }
 
+async function getPythonCommand(): Promise<string> {
+  return existsSync(VENV_PYTHON) ? VENV_PYTHON : BASE_PYTHON_COMMAND;
+}
+
+async function ensurePythonEnvironment(pi: ExtensionAPI, packageRoot: string, ctx: { ui: any; hasUI: boolean }): Promise<boolean> {
+  if (!existsSync(VENV_PYTHON)) {
+    if (!ctx.hasUI) {
+      ctx.ui.notify(`Vision Inventory Python venv is missing. Run /vision-inventory-setup interactively, or install dependencies manually with ${BASE_PYTHON_COMMAND} -m pip install -r ${join(packageRoot, "requirements.txt")}`, "error");
+      return false;
+    }
+
+    const create = await ctx.ui.confirm("Create Vision Inventory Python virtual environment?", `${BASE_PYTHON_COMMAND} -m venv ${VENV_DIR}`);
+    if (!create) {
+      ctx.ui.notify("Python environment setup skipped. Vision Inventory tools may fail until dependencies are installed.", "error");
+      return false;
+    }
+
+    await mkdir(CONFIG_DIR, { recursive: true });
+    const venvResult = await pi.exec(BASE_PYTHON_COMMAND, ["-m", "venv", VENV_DIR], { timeout: 120_000 });
+    if (venvResult.code !== 0) throw new Error(venvResult.stderr || venvResult.stdout || "Python venv creation failed");
+  }
+
+  const deps = await pi.exec(VENV_PYTHON, ["-c", "import mcp, requests, PIL, dotenv; print('ok')"], { timeout: 10_000 });
+  if (deps.code === 0) return true;
+
+  if (!ctx.hasUI) {
+    ctx.ui.notify(`Missing Python dependencies in ${VENV_DIR}. Run: ${VENV_PYTHON} -m pip install -r ${join(packageRoot, "requirements.txt")}`, "error");
+    return false;
+  }
+
+  const install = await ctx.ui.confirm("Install Python dependencies into the Vision Inventory venv?", `${VENV_PYTHON} -m pip install -r ${join(packageRoot, "requirements.txt")}`);
+  if (!install) return false;
+
+  const result = await pi.exec(VENV_PYTHON, ["-m", "pip", "install", "-r", join(packageRoot, "requirements.txt")], { timeout: 120_000 });
+  if (result.code !== 0) throw new Error(result.stderr || result.stdout || "pip install failed");
+  return true;
+}
+
 function extractMcpPayload(result: unknown): unknown {
   const maybe = result as { content?: Array<{ type?: string; text?: string }>; structuredContent?: unknown } | null;
   if (maybe && typeof maybe === "object") {
@@ -304,9 +345,10 @@ async function runBatchWorkflow(packageRoot: string, userCwd: string, argsLine: 
   }
 
   const env = await buildPythonEnv();
+  const pythonCommand = await getPythonCommand();
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(PYTHON_COMMAND, [scriptPath, ...args], {
+    const proc = spawn(pythonCommand, [scriptPath, ...args], {
       cwd: packageRoot,
       env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -426,9 +468,9 @@ export default function (pi: ExtensionAPI) {
     const hasEffectiveAccountId = Boolean(process.env.CLOUDFLARE_ACCOUNT_ID || existing.cloudflareAccountId);
     const hasEffectiveToken = Boolean(process.env.CLOUDFLARE_AUTH_TOKEN || process.env.CLOUDFLARE_API_TOKEN || existing.cloudflareAuthToken);
     if ((!hasEffectiveAccountId || !hasEffectiveToken || forceCredentials) && ctx.hasUI) {
-      ctx.ui.notify("Vision Inventory stores Cloudflare credentials in ~/.pi/agent/vision-inventory/credentials.json with chmod 600 when supported. Use /vision-inventory-credentials to change them.", "info");
+      ctx.ui.notify("Vision Inventory stores Cloudflare credentials in ~/.pi/agent/vision-inventory/credentials.json with chmod 600 when supported. Use /vision-inventory-credentials to change them. Token input may be visible depending on your Pi UI; avoid entering credentials while screen sharing.", "info");
       const cloudflareAccountId = await ctx.ui.input("Cloudflare account ID", existing.cloudflareAccountId || "");
-      const cloudflareAuthToken = await ctx.ui.input("Cloudflare Workers AI token (leave blank for default)", existing.cloudflareAuthToken ? "<keep existing; paste new token to replace>" : "");
+      const cloudflareAuthToken = await ctx.ui.input("Cloudflare Workers AI API token (leave blank for default)", existing.cloudflareAuthToken ? "<keep existing; paste new token to replace>" : "");
       const workersAiModel = await ctx.ui.input("Workers AI model", existing.workersAiModel || "@cf/meta/llama-4-scout-17b-16e-instruct");
       await saveCredentials({
         cloudflareAccountId: cloudflareAccountId || existing.cloudflareAccountId,
@@ -439,31 +481,15 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify("Missing Cloudflare credentials. Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AUTH_TOKEN/CLOUDFLARE_API_TOKEN, or run /vision-inventory-setup in interactive Pi.", "error");
     }
 
-    const deps = await pi.exec(PYTHON_COMMAND, ["-c", "import mcp, requests, PIL, dotenv; print('ok')"], { timeout: 10_000 });
-    if (deps.code !== 0) {
-      if (!ctx.hasUI) {
-        ctx.ui.notify(`Missing Python dependencies. Run: ${PYTHON_COMMAND} -m pip install -r ${join(packageRoot, "requirements.txt")}`, "error");
-        return;
-      }
-      const install = await ctx.ui.confirm("Install Python dependencies?", `${PYTHON_COMMAND} -m pip install -r ${join(packageRoot, "requirements.txt")}`);
-      if (install) {
-        const result = await pi.exec(PYTHON_COMMAND, ["-m", "pip", "install", "-r", join(packageRoot, "requirements.txt")], { timeout: 120_000 });
-        if (result.code !== 0) throw new Error(result.stderr || result.stdout || "pip install failed");
-      }
-    }
+    const pythonReady = await ensurePythonEnvironment(pi, packageRoot, ctx);
+    if (!pythonReady) return;
 
-    const commands = pi.getCommands().map((command) => command.name.toLowerCase());
-    const tools = pi.getAllTools().map((tool) => tool.name.toLowerCase());
-    const hasWebDependency = [...commands, ...tools].some((name) => name.includes("search") || name.includes("brave") || name.includes("browser") || name.includes("web"));
-    if (!hasWebDependency) {
-      ctx.ui.notify("Agent datasheet enrichment requires a web-search/browser Pi tool or skill. This package intentionally does not bundle one; install/enable your preferred search dependency before using /vision-inventory-agent-bom.", "error");
-    }
-
-    ctx.ui.notify(`Vision Inventory setup checked. Package root: ${packageRoot}`, "info");
+    ctx.ui.notify("Datasheet enrichment requires a separate web-search/browser Pi tool or skill. This package does not provide one; if your agent cannot search the web, fill datasheet_cache.json manually.", "info");
+    ctx.ui.notify(`Vision Inventory setup checked. Package root: ${packageRoot}. Python: ${await getPythonCommand()}`, "info");
   }
 
   pi.registerCommand("vision-inventory-setup", {
-    description: "Configure Vision Inventory credentials and check Python/web-search dependencies",
+    description: "Configure Vision Inventory credentials and check Python dependencies"}]}     骗? malformed? Let's see tool output. It didn't show. Wait I added weird. It might not execute due invalid JSON? It seems output missing. Need check.        Cad   
     handler: async (args, ctx) => {
       try {
         await runSetup(ctx, args.includes("--reset") || args.includes("--credentials"));
@@ -511,9 +537,23 @@ export default function (pi: ExtensionAPI) {
       }
 
       await runSetup(ctx, false);
-      const normalizedArgs = normalizeWorkflowArgs(ctx.cwd, parsed).map((arg) => JSON.stringify(arg)).join(" ");
-      const outputDir = normalizeWorkflowArgs(ctx.cwd, parsed)[1];
-      const prompt = `Run the complete Vision Electronic Indexing workflow as an agent.\n\nPackage root containing the bundled Python workflow: ${packageRoot}\nCommand arguments, already resolved relative to the user's cwd: ${normalizedArgs}\nOutput directory: ${outputDir}\n\nImportant external agent dependency: datasheet enrichment requires a web-search/browser Pi tool or skill. This package intentionally does not bundle a web-search dependency. If no search/browser tool is available, stop after generating parts_to_lookup.json and tell the user which dependency is missing.\n\nDo these steps end-to-end:\n1. Run: ${PYTHON_COMMAND} ${join(packageRoot, "scripts", "inventory_folder_to_csv.py")} ${normalizedArgs}\n2. Read ${outputDir}/parts_to_lookup.json.\n3. For every part, web-search for a datasheet. Prefer official manufacturer pages/PDFs.\n4. Write ${outputDir}/datasheet_cache.json using ${outputDir}/datasheet_cache.template.json as the exact shape.\n5. Rerun: ${PYTHON_COMMAND} ${join(packageRoot, "scripts", "inventory_folder_to_csv.py")} ${normalizedArgs} --skip-vision\n6. Read ${outputDir}/inventory.csv and ${outputDir}/inventory_evidence.csv.\n7. Summarize final BOM rows and call out every uncertainty.\n\nRules:\n- Do not invent datasheets, manufacturers, or descriptions.\n- If an exact candidate part has no official datasheet but search results strongly indicate a likely OCR correction, keep the original candidate as the datasheet_cache key and set normalized_part to the official datasheet part number. Example: key SN74AS283N may normalize to SN74LS283N when official TI results match the family/function/package and the image could plausibly confuse A with 4/LS.\n- Only set verified=true for an OCR correction when official source evidence and visual/package context make the correction highly likely; otherwise set verified=false and explain in notes.\n- Include OCR correction notes such as: \"SN74AS283N appears to be OCR for SN74LS283N; verified against TI datasheet.\"\n- Set verified=false if the part or datasheet match is uncertain.\n- Keep descriptions short, like: \"74ls (4 bit) adder low power schottky ttl 5v DIP\".\n- Preserve raw JSON and evidence files.\n- Do not expose Cloudflare credentials.\n- If a command fails because credentials or Python dependencies are missing, tell the user to run /vision-inventory-setup or /vision-inventory-credentials.`;
+      const normalized = normalizeWorkflowArgs(ctx.cwd, parsed);
+      const normalizedArgs = normalized.map((arg) => JSON.stringify(arg)).join(" ");
+      const outputDir = normalized[1];
+      const pythonCommand = await getPythonCommand();
+
+      ctx.ui.setStatus("vision-inventory", "Running initial vision workflow...");
+      try {
+        const initialOutput = await runBatchWorkflow(packageRoot, ctx.cwd, args || "");
+        ctx.ui.notify(initialOutput.slice(-4000), "info");
+      } catch (error) {
+        ctx.ui.notify(error instanceof Error ? error.message.slice(-4000) : String(error), "error");
+        ctx.ui.setStatus("vision-inventory", "");
+        return;
+      }
+      ctx.ui.setStatus("vision-inventory", "");
+
+      const prompt = `Continue the Vision Electronic Indexing workflow as an agent.\n\nThe deterministic vision step has already been run by the Pi command.\nPackage root containing the bundled Python workflow: ${packageRoot}\nCommand arguments, already resolved relative to the user's cwd: ${normalizedArgs}\nOutput directory: ${outputDir}\n\nImportant external agent dependency: datasheet enrichment requires a web-search/browser Pi tool or skill. This package intentionally does not bundle a web-search dependency. If no search/browser tool is available, stop after reviewing ${outputDir}/parts_to_lookup.json and tell the user to fill ${outputDir}/datasheet_cache.json manually.\n\nDo these remaining steps end-to-end:\n1. Read ${outputDir}/parts_to_lookup.json.\n2. For every part, web-search for a datasheet. Prefer official manufacturer pages/PDFs.\n3. Write ${outputDir}/datasheet_cache.json using ${outputDir}/datasheet_cache.template.json as the exact shape.\n4. Rerun: ${pythonCommand} ${join(packageRoot, "scripts", "inventory_folder_to_csv.py")} ${normalizedArgs} --skip-vision\n5. Read ${outputDir}/inventory.csv and ${outputDir}/inventory_evidence.csv.\n6. Summarize final BOM rows and call out every uncertainty.\n\nRules:\n- Do not invent datasheets, manufacturers, or descriptions.\n- If an exact candidate part has no official datasheet but search results strongly indicate a likely OCR correction, keep the original candidate as the datasheet_cache key and set normalized_part to the official datasheet part number. Example: key SN74AS283N may normalize to SN74LS283N when official TI results match the family/function/package and the image could plausibly confuse A with 4/LS.\n- Only set verified=true for an OCR correction when official source evidence and visual/package context make the correction highly likely; otherwise set verified=false and explain in notes.\n- Include OCR correction notes such as: \"SN74AS283N appears to be OCR for SN74LS283N; verified against TI datasheet.\"\n- Set verified=false if the part or datasheet match is uncertain.\n- Keep descriptions short, like: \"74ls (4 bit) adder low power schottky ttl 5v DIP\".\n- Preserve raw JSON and evidence files.\n- Do not expose Cloudflare credentials.\n- If a command fails because credentials or Python dependencies are missing, tell the user to run /vision-inventory-setup or /vision-inventory-credentials.`;
 
       await ctx.sendUserMessage(prompt);
     },
