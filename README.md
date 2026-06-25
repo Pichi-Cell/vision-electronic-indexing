@@ -250,6 +250,8 @@ needs_review=true
 verified=false
 ```
 
+Also review rows with notes mentioning `Visual same-as hypothesis`; those rows include one or more unreadable ICs counted by package/layout similarity rather than direct marking OCR.
+
 ## CSV output columns
 
 `inventory.csv` is deduplicated by `normalized_part`, the main/final part number column derived from the vision `likely_part` and datasheet enrichment. Multiple images, or multiple candidates from one image, can merge into one BOM row when they resolve to the same `normalized_part`.
@@ -399,13 +401,17 @@ jpeg_quality: 96
 model: @cf/meta/llama-4-scout-17b-16e-instruct
 ```
 
-## Multiple-IC behavior
+## Multiple-IC and visual same-as behavior
 
 Images may contain one IC or many different ICs. The workflow does not force all visible ICs in one image to share the same marking or part family.
 
+The vision prompt asks the model to assign visual groups when ICs share package/body size, orientation, pin count, and board region. If an unreadable IC is visually very similar to repeated nearby readable ICs, the raw JSON may include a `possible_same_as_likely_part` hypothesis.
+
+Important: visual same-as is only a quantity/grouping hypothesis. The unreadable IC keeps `package_marking="unreadable"`, keeps `likely_part="unknown"`, and forces `needs_review=true`. When the confidence is high, the batch CSV can count it under the visually matched part while adding a note such as `Visual same-as hypothesis for unreadable IC(s): ...`.
+
 The batch workflow builds one evidence row per image/candidate part, so one photo can contribute several BOM rows.
 
-This improves handling of mixed IC photos, but OCR can still miss, merge, or misread small markings. Review raw JSON and evidence rows when accuracy matters.
+This improves handling of mixed IC photos and repeated logic chips, but OCR can still miss, merge, or misread small markings. Review raw JSON and evidence rows when accuracy matters.
 
 ## Datasheet enrichment rules
 

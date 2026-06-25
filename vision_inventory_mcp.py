@@ -109,6 +109,11 @@ Return only valid JSON using this schema:
       "package_marking": "exact visible marking, unclear, unreadable, or [?]-marked partial text",
       "marking_confidence": "high | medium | low | unreadable",
       "likely_part": "visible part marking only, or unknown",
+      "visual_group_id": "G1 or unknown",
+      "visual_similarity_to_group": "high | medium | low | unknown",
+      "possible_same_as_likely_part": "visible part from a visually similar nearby/grouped IC, or unknown",
+      "possible_same_as_confidence": "high | medium | low | none",
+      "same_as_reason": "short visual reason for possible same-as grouping, or empty",
       "description": "short visual description, not web lookup",
       "position_hint": "top-left / center / near USB connector / etc.",
       "needs_review": true
@@ -125,7 +130,11 @@ Rules:
 - If a marking is not readable, write "unreadable".
 - If a component is visible but not identifiable, item_type should be "unknown".
 - count_index is an ordinal item number; visible_quantity is the estimated number of matching visible physical components.
-- needs_review must be true when marking_confidence is "low" or "unreadable".
+- ICs with the same package/body size, orientation, pin count, board region, and repeated neighboring markings may be assigned the same visual_group_id.
+- If an unreadable IC is visually very similar to multiple nearby readable ICs, keep likely_part as "unknown" but set possible_same_as_likely_part to the nearby readable visible part and explain in same_as_reason.
+- possible_same_as_likely_part is only a visual grouping hypothesis. Do not use it to overwrite likely_part or package_marking.
+- Use possible_same_as_confidence="high" only when repeated neighboring ICs make the same-as hypothesis visually strong.
+- needs_review must be true when marking_confidence is "low" or "unreadable", or when possible_same_as_likely_part is used.
 """.strip()
 
 
@@ -368,6 +377,11 @@ def normalize_item(item: Any, fallback_index: int) -> Dict[str, Any]:
         "package_marking": "unknown",
         "marking_confidence": "unreadable",
         "likely_part": "unknown",
+        "visual_group_id": "unknown",
+        "visual_similarity_to_group": "unknown",
+        "possible_same_as_likely_part": "unknown",
+        "possible_same_as_confidence": "none",
+        "same_as_reason": "",
         "description": "unknown",
         "position_hint": "unknown",
         "needs_review": True,
@@ -394,8 +408,20 @@ def normalize_item(item: Any, fallback_index: int) -> Dict[str, Any]:
         confidence = "low"
     normalized["marking_confidence"] = confidence
 
+    visual_similarity = str(normalized.get("visual_similarity_to_group", "unknown")).strip().lower()
+    if visual_similarity not in {"high", "medium", "low", "unknown"}:
+        visual_similarity = "unknown"
+    normalized["visual_similarity_to_group"] = visual_similarity
+
+    same_as_confidence = str(normalized.get("possible_same_as_confidence", "none")).strip().lower()
+    if same_as_confidence not in {"high", "medium", "low", "none"}:
+        same_as_confidence = "none"
+    normalized["possible_same_as_confidence"] = same_as_confidence
+
     normalized["needs_review"] = coerce_bool(normalized.get("needs_review", True))
     if confidence in {"low", "unreadable"}:
+        normalized["needs_review"] = True
+    if same_as_confidence != "none" and str(normalized.get("possible_same_as_likely_part", "unknown")).strip().lower() not in {"", "unknown", "unreadable", "none", "n/a"}:
         normalized["needs_review"] = True
 
     # Ensure string fields are strings and not nulls/lists.
@@ -403,6 +429,9 @@ def normalize_item(item: Any, fallback_index: int) -> Dict[str, Any]:
         "item_type",
         "package_marking",
         "likely_part",
+        "visual_group_id",
+        "possible_same_as_likely_part",
+        "same_as_reason",
         "description",
         "position_hint",
     ]:
@@ -681,8 +710,15 @@ def flatten_inventory_for_csv(inventory: Dict[str, Any], enrichment_cache: Optio
                 continue
 
             candidate = str(item.get("likely_part") or item.get("package_marking") or "unknown").strip().upper()
+            visual_same_as = False
             if not candidate or candidate.lower() in {"unknown", "unreadable", "unclear", "none", "n/a"}:
-                continue
+                same_as_confidence = str(item.get("possible_same_as_confidence", "none")).strip().lower()
+                possible_same_as = str(item.get("possible_same_as_likely_part") or "unknown").strip().upper()
+                if same_as_confidence == "high" and possible_same_as.lower() not in {"unknown", "unreadable", "unclear", "none", "n/a"}:
+                    candidate = possible_same_as
+                    visual_same_as = True
+                else:
+                    continue
             enrichment = cache.get(candidate, {}) if isinstance(cache.get(candidate, {}), dict) else {}
             normalized = str(enrichment.get("normalized_part") or candidate).strip().upper()
             key = (image_name, normalized)
@@ -694,12 +730,16 @@ def flatten_inventory_for_csv(inventory: Dict[str, Any], enrichment_cache: Optio
                 "vision_confidence": set(),
                 "needs_review": False,
                 "observed_markings": set(),
+                "notes": set(),
             })
             row["candidate_parts"].add(candidate)
             row["vision_confidence"].add(str(item.get("marking_confidence", "unknown")))
-            row["needs_review"] = bool(row["needs_review"] or item.get("needs_review", True))
+            row["needs_review"] = bool(row["needs_review"] or item.get("needs_review", True) or visual_same_as)
             # Keep the main part number as the observation, not the full package/date/lot marking.
             row["observed_markings"].add(normalized)
+            if visual_same_as:
+                reason = str(item.get("same_as_reason") or "Unreadable IC visually matches nearby readable repeated ICs.").strip()
+                row["notes"].add(f"Visual same-as hypothesis for unreadable IC: {reason}")
             try:
                 if "visible_quantity" in item:
                     row["amount"] = int(row["amount"]) + max(1, int(item.get("visible_quantity", 1)))
@@ -728,7 +768,10 @@ def flatten_inventory_for_csv(inventory: Dict[str, Any], enrichment_cache: Optio
             "images": " | ".join(sorted({str(row["image"]) for row in part_rows})),
             "observed_markings": " | ".join(sorted({marking for row in part_rows for marking in row["observed_markings"]})),
             "raw_json": "",
-            "notes": enrichment.get("notes", "Missing datasheet enrichment"),
+            "notes": " | ".join(
+                [str(enrichment.get("notes", "Missing datasheet enrichment"))]
+                + sorted({note for row in part_rows for note in row.get("notes", set())})
+            ),
         })
 
     return rows

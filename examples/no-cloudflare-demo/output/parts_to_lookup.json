@@ -18,11 +18,13 @@
       "query": "LM358N datasheet",
       "status": "needs_datasheet_lookup",
       "observed_markings": [
-        "LM358N"
+        "LM358N",
+        "unreadable"
       ],
       "images": [
         "demo_timer_board.jpg"
       ],
+      "has_visual_same_as_hypothesis": true,
       "evidence": [
         {
           "image": "demo_timer_board.jpg",
@@ -32,6 +34,19 @@
           "candidate_part": "LM358N",
           "marking_confidence": "medium",
           "needs_review": false
+        },
+        {
+          "image": "demo_timer_board.jpg",
+          "source": "visual_same_as_hypothesis",
+          "position_hint": "lower-right",
+          "observed_marking": "unreadable",
+          "candidate_part": "LM358N",
+          "marking_confidence": "unreadable",
+          "needs_review": true,
+          "inference_type": "visual_same_as_hypothesis",
+          "visual_group_id": "G2",
+          "possible_same_as_confidence": "high",
+          "same_as_reason": "Same 8-pin DIP package, orientation, and board region as the nearby readable LM358N."
         }
       ],
       "enrichment_template": {
@@ -53,6 +68,7 @@
       "images": [
         "demo_timer_board.jpg"
       ],
+      "has_visual_same_as_hypothesis": false,
       "evidence": [
         {
           "image": "demo_timer_board.jpg",
@@ -92,6 +108,19 @@
       "candidate_part": "LM358N",
       "marking_confidence": "medium",
       "needs_review": false
+    },
+    {
+      "image": "demo_timer_board.jpg",
+      "source": "visual_same_as_hypothesis",
+      "position_hint": "lower-right",
+      "observed_marking": "unreadable",
+      "candidate_part": "LM358N",
+      "marking_confidence": "unreadable",
+      "needs_review": true,
+      "inference_type": "visual_same_as_hypothesis",
+      "visual_group_id": "G2",
+      "possible_same_as_confidence": "high",
+      "same_as_reason": "Same 8-pin DIP package, orientation, and board region as the nearby readable LM358N."
     }
   ]
 }

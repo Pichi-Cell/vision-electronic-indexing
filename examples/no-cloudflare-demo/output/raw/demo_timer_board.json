@@ -8,6 +8,11 @@
       "package_marking": "NE555P\nTEXAS INSTRUMENTS",
       "marking_confidence": "high",
       "likely_part": "NE555P",
+      "visual_group_id": "G1",
+      "visual_similarity_to_group": "low",
+      "possible_same_as_likely_part": "unknown",
+      "possible_same_as_confidence": "none",
+      "same_as_reason": "",
       "description": "8-pin DIP IC with readable NE555P marking",
       "position_hint": "center-left",
       "needs_review": false
@@ -19,9 +24,30 @@
       "package_marking": "LM358N",
       "marking_confidence": "medium",
       "likely_part": "LM358N",
+      "visual_group_id": "G2",
+      "visual_similarity_to_group": "high",
+      "possible_same_as_likely_part": "unknown",
+      "possible_same_as_confidence": "none",
+      "same_as_reason": "",
       "description": "8-pin DIP IC with readable LM358N marking",
       "position_hint": "center-right",
       "needs_review": false
+    },
+    {
+      "item_type": "IC",
+      "count_index": 3,
+      "visible_quantity": 1,
+      "package_marking": "unreadable",
+      "marking_confidence": "unreadable",
+      "likely_part": "unknown",
+      "visual_group_id": "G2",
+      "visual_similarity_to_group": "high",
+      "possible_same_as_likely_part": "LM358N",
+      "possible_same_as_confidence": "high",
+      "same_as_reason": "Same 8-pin DIP package, orientation, and board region as the nearby readable LM358N.",
+      "description": "8-pin DIP IC with unreadable top marking",
+      "position_hint": "lower-right",
+      "needs_review": true
     }
   ],
   "warnings": []

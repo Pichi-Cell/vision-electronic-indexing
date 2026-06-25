@@ -89,6 +89,16 @@ def candidate_from_item(item: Dict[str, Any]) -> str:
     return "unknown"
 
 
+def possible_same_as_candidate(item: Dict[str, Any]) -> str:
+    confidence = str(item.get("possible_same_as_confidence", "none")).strip().lower()
+    if confidence != "high":
+        return "unknown"
+    value = clean_marking(item.get("possible_same_as_likely_part"))
+    if value.lower() in UNKNOWN_MARKINGS:
+        return "unknown"
+    return likely_base_part(value)
+
+
 def extract_part_evidence(image_name: str, result: Dict[str, Any]) -> List[Dict[str, Any]]:
     evidence: List[Dict[str, Any]] = []
 
@@ -100,17 +110,34 @@ def extract_part_evidence(image_name: str, result: Dict[str, Any]) -> List[Dict[
             if str(item.get("item_type", "")).strip().lower() != "ic":
                 continue
             marking = clean_marking(item.get("package_marking"))
-            if marking.lower() in UNKNOWN_MARKINGS:
+            if marking.lower() not in UNKNOWN_MARKINGS:
+                evidence.append({
+                    "image": image_name,
+                    "source": "items",
+                    "position_hint": item.get("position_hint", "unknown"),
+                    "observed_marking": marking,
+                    "candidate_part": candidate_from_item(item),
+                    "marking_confidence": item.get("marking_confidence", "unknown"),
+                    "needs_review": bool(item.get("needs_review", True)),
+                })
                 continue
-            evidence.append({
-                "image": image_name,
-                "source": "items",
-                "position_hint": item.get("position_hint", "unknown"),
-                "observed_marking": marking,
-                "candidate_part": candidate_from_item(item),
-                "marking_confidence": item.get("marking_confidence", "unknown"),
-                "needs_review": bool(item.get("needs_review", True)),
-            })
+
+            possible_candidate = possible_same_as_candidate(item)
+            if possible_candidate.lower() not in UNKNOWN_MARKINGS:
+                reason = clean_marking(item.get("same_as_reason"))
+                evidence.append({
+                    "image": image_name,
+                    "source": "visual_same_as_hypothesis",
+                    "position_hint": item.get("position_hint", "unknown"),
+                    "observed_marking": marking or "unreadable",
+                    "candidate_part": possible_candidate,
+                    "marking_confidence": item.get("marking_confidence", "unreadable"),
+                    "needs_review": True,
+                    "inference_type": "visual_same_as_hypothesis",
+                    "visual_group_id": item.get("visual_group_id", "unknown"),
+                    "possible_same_as_confidence": item.get("possible_same_as_confidence", "high"),
+                    "same_as_reason": reason or "Unreadable IC visually matches nearby readable repeated ICs.",
+                })
 
     observations = result.get("ic_marking_observations", [])
     if isinstance(observations, list):
@@ -225,6 +252,7 @@ def build_parts_to_lookup(results: List[Dict[str, Any]], output_dir: Path) -> Di
             "status": "needs_datasheet_lookup",
             "observed_markings": observed,
             "images": images,
+            "has_visual_same_as_hypothesis": any(row.get("inference_type") == "visual_same_as_hypothesis" for row in evidence_rows),
             "evidence": evidence_rows,
             "enrichment_template": {
                 "normalized_part": part,
@@ -306,8 +334,11 @@ def estimate_amount_for_candidate(result: Dict[str, Any], candidate: str, eviden
             continue
         if str(item.get("item_type", "")).strip().lower() != "ic":
             continue
-        if candidate_from_item(item).upper() != candidate.upper():
-            continue
+        item_candidate = candidate_from_item(item).upper()
+        if item_candidate != candidate.upper():
+            possible_candidate = possible_same_as_candidate(item).upper()
+            if possible_candidate != candidate.upper():
+                continue
         matched += 1
         visible_quantity = positive_int(item.get("visible_quantity"))
         if visible_quantity is not None:
@@ -368,10 +399,23 @@ def image_part_rows(results: List[Dict[str, Any]], cache: Dict[str, Any]) -> Lis
             observed_markings = [likely_part]
             observations = "; ".join(
                 f"{row['position_hint']}: {row['observed_marking']} ({row['marking_confidence']})"
+                + (
+                    f" [visual same-as {row.get('possible_same_as_confidence')}: {row.get('same_as_reason')}]"
+                    if row.get("inference_type") == "visual_same_as_hypothesis"
+                    else ""
+                )
                 for row in candidate_evidence
             )
             confidence_values = [str(row.get("marking_confidence", "unknown")) for row in candidate_evidence]
+            visual_same_as_notes = [
+                str(row.get("same_as_reason", "")).strip()
+                for row in candidate_evidence
+                if row.get("inference_type") == "visual_same_as_hypothesis" and str(row.get("same_as_reason", "")).strip()
+            ]
             needs_review = any(row.get("needs_review", True) for row in candidate_evidence) or not enrichment.get("verified", False)
+            notes = enrichment.get("notes", "Missing datasheet enrichment")
+            if visual_same_as_notes:
+                notes = f"{notes}; Visual same-as hypothesis for unreadable IC(s): {' | '.join(sorted(set(visual_same_as_notes)))}"
 
             rows.append({
                 "image": image_name,
@@ -387,7 +431,7 @@ def image_part_rows(results: List[Dict[str, Any]], cache: Dict[str, Any]) -> Lis
                 "observed_markings": " | ".join(observed_markings),
                 "observations": observations,
                 "raw_json": entry["raw_json"],
-                "notes": enrichment.get("notes", "Missing datasheet enrichment"),
+                "notes": notes,
             })
     return rows
 
