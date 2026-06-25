@@ -15,7 +15,7 @@ This package intentionally does **not** bundle these dependencies:
 - A Pi web-search/browser tool or skill for datasheet enrichment.
 - Cloudflare Workers AI API token credentials.
 
-Use `/vision-inventory-setup` to configure credentials, create/check the Pi-managed Python venv, install Python dependencies when approved, and see the web-search/browser requirement warning. Use `/vision-inventory-credentials` to change stored Cloudflare credentials.
+Use `/vision-inventory-setup` to configure credentials, check/install Python dependencies when approved, and see the web-search/browser requirement warning. Use `/vision-inventory-credentials` to change stored Cloudflare credentials.
 
 ## Preferred Command
 

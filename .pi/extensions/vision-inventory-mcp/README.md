@@ -16,9 +16,7 @@ Then in Pi:
 /vision-inventory-setup
 ```
 
-Setup creates/checks a Pi-managed Python virtual environment at `~/.pi/agent/vision-inventory/.venv`, installs Python dependencies there when approved, warns that datasheet lookup needs a separate web-search/browser capability, and prompts for Cloudflare Workers AI API token credentials when needed.
-
-On Debian/Ubuntu, Python venv creation may require `python3-venv` or a version-specific package such as `python3.10-venv`. If setup reports that `ensurepip` is unavailable, install the package, remove the incomplete venv with `rm -rf ~/.pi/agent/vision-inventory/.venv`, and rerun `/vision-inventory-setup`.
+Setup checks Python dependencies using the configured `python3` command, offers to install missing packages with `python3 -m pip install -r requirements.txt`, warns that datasheet lookup needs a separate web-search/browser capability, and prompts for Cloudflare Workers AI API token credentials when needed.
 
 Credentials are stored at:
 
@@ -76,7 +74,7 @@ Options are forwarded to `scripts/inventory_folder_to_csv.py`, such as `--recurs
 
 This package intentionally does **not** bundle:
 
-- Python packages from `requirements.txt`: `mcp`, `requests`, `pillow`, `python-dotenv`; optional `pillow-heif`. Pi setup installs these into the package-managed venv when approved.
+- Python packages from `requirements.txt`: `mcp`, `requests`, `pillow`, `python-dotenv`; optional `pillow-heif`. Pi setup can install these with the configured `python3` when approved.
 - A Pi web-search/browser tool or skill for datasheet lookup.
 - Cloudflare Workers AI API token credentials.
 
