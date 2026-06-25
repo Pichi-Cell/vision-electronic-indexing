@@ -62,7 +62,7 @@ The agent workflow:
 - `/vision-inventory-agent-bom` runs the full agent-assisted datasheet-enrichment workflow.
 - `/vision-inventory-restart` restarts the local Python vision bridge.
 
-Options are forwarded to `scripts/inventory_folder_to_csv.py`, such as `--recursive`, `--limit`, `--max-side`, and `--jpeg-quality`. The default `--max-side 0` sends images at full resolution; set a positive value to resize.
+Options are forwarded to `scripts/inventory_folder_to_csv.py`, such as `--recursive`, `--limit`, `--segment-ics`, `--max-side`, and `--jpeg-quality`. The default `--max-side 0` sends images at full resolution; set a positive value to resize. Use `--segment-ics` to crop dark IC-like packages before OCR, useful when ICs in one image have mixed orientations.
 
 ## Agent tools
 

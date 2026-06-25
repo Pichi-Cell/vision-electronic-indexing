@@ -20,7 +20,9 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from PIL import Image, ImageOps
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -56,6 +58,154 @@ def iter_images(folder: Path, recursive: bool, limit: Optional[int]) -> List[Pat
     iterator = folder.rglob("*") if recursive else folder.iterdir()
     images = sorted([p for p in iterator if is_supported_image(p)], key=lambda p: str(p).lower())
     return images[:limit] if limit is not None else images
+
+
+def clamp(value: int, low: int, high: int) -> int:
+    return max(low, min(high, value))
+
+
+def boxes_overlap_fraction(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> float:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    if ix2 <= ix1 or iy2 <= iy1:
+        return 0.0
+    intersection = (ix2 - ix1) * (iy2 - iy1)
+    smaller = min((ax2 - ax1) * (ay2 - ay1), (bx2 - bx1) * (by2 - by1))
+    return intersection / smaller if smaller else 0.0
+
+
+def detect_dark_ic_like_boxes(
+    image_path: Path,
+    *,
+    max_side: int = 1200,
+    threshold: int = 95,
+    min_area_ratio: float = 0.00045,
+    max_area_ratio: float = 0.20,
+    max_crops: int = 12,
+) -> List[Tuple[int, int, int, int]]:
+    """Find dark rectangular IC-like regions using Pillow-only connected components.
+
+    This is intentionally conservative. It catches common black IC packages and
+    returns original-image-coordinate boxes. If no reliable boxes are found, the
+    caller should fall back to the original image.
+    """
+    image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
+    original_w, original_h = image.size
+    work = image.copy()
+    scale = 1.0
+    if max(original_w, original_h) > max_side:
+        scale = max_side / float(max(original_w, original_h))
+        resample = getattr(Image, "Resampling", Image).LANCZOS
+        work.thumbnail((max_side, max_side), resample)
+
+    gray = work.convert("L")
+    w, h = gray.size
+    pixels = list(gray.getdata())
+    mask = [px <= threshold for px in pixels]
+    visited = bytearray(w * h)
+    min_area = max(80, int(w * h * min_area_ratio))
+    max_area = max(min_area + 1, int(w * h * max_area_ratio))
+    boxes: List[Tuple[int, int, int, int, int]] = []
+
+    for start, is_dark in enumerate(mask):
+        if not is_dark or visited[start]:
+            continue
+        stack = [start]
+        visited[start] = 1
+        area = 0
+        min_x = w
+        min_y = h
+        max_x = 0
+        max_y = 0
+        while stack:
+            idx = stack.pop()
+            area += 1
+            x = idx % w
+            y = idx // w
+            min_x = min(min_x, x)
+            min_y = min(min_y, y)
+            max_x = max(max_x, x)
+            max_y = max(max_y, y)
+            for nxt in (idx - 1, idx + 1, idx - w, idx + w):
+                if nxt < 0 or nxt >= w * h or visited[nxt] or not mask[nxt]:
+                    continue
+                # Prevent left/right wrapping.
+                if (nxt == idx - 1 and x == 0) or (nxt == idx + 1 and x == w - 1):
+                    continue
+                visited[nxt] = 1
+                stack.append(nxt)
+
+        box_w = max_x - min_x + 1
+        box_h = max_y - min_y + 1
+        if area < min_area or area > max_area:
+            continue
+        if box_w < 18 or box_h < 18:
+            continue
+        aspect = box_w / float(box_h)
+        if aspect < 0.25 or aspect > 5.0:
+            continue
+        fill = area / float(box_w * box_h)
+        if fill < 0.35:
+            continue
+        if box_w > w * 0.80 or box_h > h * 0.80:
+            continue
+        boxes.append((area, min_x, min_y, max_x + 1, max_y + 1))
+
+    boxes.sort(reverse=True)
+    selected: List[Tuple[int, int, int, int]] = []
+    for _area, x1, y1, x2, y2 in boxes:
+        candidate = (x1, y1, x2, y2)
+        if any(boxes_overlap_fraction(candidate, existing) > 0.65 for existing in selected):
+            continue
+        selected.append(candidate)
+        if len(selected) >= max_crops:
+            break
+
+    # Return top-to-bottom, left-to-right in original coordinates.
+    scaled: List[Tuple[int, int, int, int]] = []
+    for x1, y1, x2, y2 in selected:
+        ox1 = int(x1 / scale)
+        oy1 = int(y1 / scale)
+        ox2 = int(x2 / scale)
+        oy2 = int(y2 / scale)
+        scaled.append((clamp(ox1, 0, original_w), clamp(oy1, 0, original_h), clamp(ox2, 0, original_w), clamp(oy2, 0, original_h)))
+    return sorted(scaled, key=lambda box: (box[1], box[0]))
+
+
+def write_ic_crops(image_path: Path, crops_dir: Path, args: argparse.Namespace) -> List[Dict[str, Any]]:
+    boxes = detect_dark_ic_like_boxes(
+        image_path,
+        max_side=args.segment_detection_max_side,
+        threshold=args.segment_dark_threshold,
+        max_crops=args.segment_max_crops,
+    )
+    if not boxes:
+        return []
+
+    image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
+    width, height = image.size
+    crops_dir.mkdir(parents=True, exist_ok=True)
+    crop_entries: List[Dict[str, Any]] = []
+    for index, (x1, y1, x2, y2) in enumerate(boxes, start=1):
+        pad = int(max(x2 - x1, y2 - y1) * args.segment_padding_ratio)
+        crop_box = (
+            clamp(x1 - pad, 0, width),
+            clamp(y1 - pad, 0, height),
+            clamp(x2 + pad, 0, width),
+            clamp(y2 + pad, 0, height),
+        )
+        crop = image.crop(crop_box)
+        crop_path = crops_dir / f"{safe_stem(image_path)}__ic_{index:02d}.jpg"
+        crop.save(crop_path, format="JPEG", quality=args.jpeg_quality, optimize=True)
+        crop_entries.append({
+            "crop_path": crop_path,
+            "source_image": str(image_path),
+            "crop_index": index,
+            "bbox": crop_box,
+        })
+    return crop_entries
 
 
 def clean_marking(value: Any) -> str:
@@ -170,6 +320,33 @@ def preflight_credentials() -> None:
         )
 
 
+def segmented_crop_prompt(crop_name: str, source_name: str) -> str:
+    return vision.build_default_user_prompt(crop_name) + f"""
+
+Additional crop/orientation instructions:
+- This image is an automatically cropped IC/package candidate from source image: {source_name}.
+- The crop may be rotated or upside-down relative to the full board.
+- Mentally check 0, 90, 180, and 270 degree orientations before transcribing package text.
+- Prefer the orientation that makes letters/numbers readable as normal IC top markings.
+- Return the marking for this cropped IC/package only when possible.
+""".strip()
+
+
+def process_one_image(image_path: Path, raw_path: Path, args: argparse.Namespace, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    result = vision.process_image_impl(
+        image_path=str(image_path),
+        max_side=args.max_side,
+        jpeg_quality=args.jpeg_quality,
+        custom_prompt=(segmented_crop_prompt(image_path.name, Path(metadata["source_image"]).name) if metadata else None),
+    )
+    if metadata and isinstance(result, dict):
+        result["source_image"] = Path(metadata["source_image"]).name
+        result["crop_index"] = metadata["crop_index"]
+        result["crop_bbox"] = metadata["bbox"]
+    write_json(raw_path, result)
+    return {"image_path": str(image_path), "raw_json": str(raw_path), "result": result}
+
+
 def process_images(args: argparse.Namespace, raw_dir: Path) -> List[Dict[str, Any]]:
     image_folder = Path(args.image_folder).expanduser().resolve()
     if not image_folder.is_dir():
@@ -183,16 +360,22 @@ def process_images(args: argparse.Namespace, raw_dir: Path) -> List[Dict[str, An
     preflight_credentials()
 
     results: List[Dict[str, Any]] = []
+    crops_dir = raw_dir.parent / "crops"
     for image_path in images:
+        if args.segment_ics:
+            crop_entries = write_ic_crops(image_path, crops_dir, args)
+            if crop_entries:
+                print(f"Processing {image_path} as {len(crop_entries)} segmented IC crop(s)")
+                for crop in crop_entries:
+                    crop_path = crop["crop_path"]
+                    raw_path = raw_dir / f"{safe_stem(crop_path)}.json"
+                    results.append(process_one_image(crop_path, raw_path, args, metadata=crop))
+                continue
+            print(f"No IC-like segments found for {image_path}; processing full image")
+
         print(f"Processing {image_path}")
-        result = vision.process_image_impl(
-            image_path=str(image_path),
-            max_side=args.max_side,
-            jpeg_quality=args.jpeg_quality,
-        )
         raw_path = raw_dir / f"{safe_stem(image_path)}.json"
-        write_json(raw_path, result)
-        results.append({"image_path": str(image_path), "raw_json": str(raw_path), "result": result})
+        results.append(process_one_image(image_path, raw_path, args))
 
     return results
 
@@ -548,6 +731,14 @@ def validate_setup(args: argparse.Namespace, output_dir: Path) -> None:
         images = iter_images(image_folder, args.recursive, args.limit)
         print(f"- Image folder: ok ({image_folder})")
         print(f"- Supported images found: {len(images)}")
+        if args.segment_ics and images:
+            sample_boxes = detect_dark_ic_like_boxes(
+                images[0],
+                max_side=args.segment_detection_max_side,
+                threshold=args.segment_dark_threshold,
+                max_crops=args.segment_max_crops,
+            )
+            print(f"- IC segmentation enabled: first image would produce {len(sample_boxes)} crop(s)")
         heic_images = [p for p in images if p.suffix.lower() in {".heic", ".heif"}]
         if heic_images:
             try:
@@ -604,6 +795,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of images to process")
     parser.add_argument("--skip-vision", action="store_true", help="Reuse existing output_dir/raw/*.json instead of calling vision AI")
     parser.add_argument("--validate-setup", action="store_true", help="Check dependencies, paths, credentials, and image discovery without processing images")
+    parser.add_argument("--segment-ics", action="store_true", help="Detect dark IC-like packages, crop them individually, and process crops instead of the full image when crops are found")
+    parser.add_argument("--segment-max-crops", type=int, default=12, help="Maximum IC/package crops to process per source image when --segment-ics is enabled")
+    parser.add_argument("--segment-dark-threshold", type=int, default=95, help="Grayscale threshold for dark IC/package segmentation (0-255, lower is stricter)")
+    parser.add_argument("--segment-detection-max-side", type=int, default=1200, help="Maximum image side used internally for segmentation detection")
+    parser.add_argument("--segment-padding-ratio", type=float, default=0.22, help="Padding around each detected IC crop as a fraction of its largest side")
     parser.add_argument("--max-side", type=int, default=vision.DEFAULT_MAX_SIDE, help="Maximum resized image side; use 0 for full resolution (default)")
     parser.add_argument("--jpeg-quality", type=int, default=vision.DEFAULT_JPEG_QUALITY, help="JPEG quality for model input")
     return parser.parse_args()

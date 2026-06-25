@@ -216,6 +216,7 @@ Useful options:
 ```text
 /vision-inventory-agent-bom ./photos ./output --recursive
 /vision-inventory-agent-bom ./photos ./output --limit 3
+/vision-inventory-agent-bom ./photos ./output --segment-ics
 /vision-inventory-agent-bom ./photos ./output --max-side 0 --jpeg-quality 96
 ```
 
@@ -315,6 +316,8 @@ You can run the deterministic workflow without Pi commands:
 python3 -m pip install -r requirements.txt
 python3 scripts/inventory_folder_to_csv.py ./photos ./output --validate-setup
 python3 scripts/inventory_folder_to_csv.py ./photos ./output
+# Optional: crop dark IC-like packages before OCR, useful when ICs have mixed orientations.
+python3 scripts/inventory_folder_to_csv.py ./photos ./output --segment-ics
 ```
 
 Then fill `output/datasheet_cache.json` manually or with an agent, and regenerate the CSV without reprocessing images:
@@ -411,7 +414,11 @@ Important: visual same-as is only a quantity/grouping hypothesis. The unreadable
 
 The batch workflow builds one evidence row per image/candidate part, so one photo can contribute several BOM rows.
 
-This improves handling of mixed IC photos and repeated logic chips, but OCR can still miss, merge, or misread small markings. Review raw JSON and evidence rows when accuracy matters.
+For photos where some IC markings are upside-down or rotated relative to others, use `--segment-ics`. This enables a Pillow-only segmentation pre-pass that detects dark IC-like rectangular packages, writes crops to `output/crops/`, and sends each crop with instructions to check 0/90/180/270 degree orientations before OCR. If no IC-like crops are found for an image, the workflow falls back to the full image.
+
+Segmentation increases API calls because each crop is processed separately. Tune it with `--segment-max-crops`, `--segment-dark-threshold`, `--segment-detection-max-side`, and `--segment-padding-ratio` if needed.
+
+This improves handling of mixed IC photos, repeated logic chips, and rotated packages, but OCR can still miss, merge, or misread small markings. Review raw JSON and evidence rows when accuracy matters.
 
 ## Datasheet enrichment rules
 
