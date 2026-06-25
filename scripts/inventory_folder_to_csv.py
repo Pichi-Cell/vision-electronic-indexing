@@ -32,6 +32,7 @@ import vision_inventory_mcp as vision  # noqa: E402
 
 UNKNOWN_MARKINGS = {"", "unknown", "unreadable", "unclear", "none", "n/a"}
 PART_PATTERN = re.compile(r"\b[A-Z]{1,4}[A-Z0-9]{2,}[A-Z0-9?\[\]-]*\b", re.IGNORECASE)
+SEGMENT_CROP_MODEL_MAX_SIDE = 250
 
 
 def safe_stem(path: Path) -> str:
@@ -333,9 +334,10 @@ Additional crop/orientation instructions:
 
 
 def process_one_image(image_path: Path, raw_path: Path, args: argparse.Namespace, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    model_max_side = SEGMENT_CROP_MODEL_MAX_SIDE if metadata else args.max_side
     result = vision.process_image_impl(
         image_path=str(image_path),
-        max_side=args.max_side,
+        max_side=model_max_side,
         jpeg_quality=args.jpeg_quality,
         custom_prompt=(segmented_crop_prompt(image_path.name, Path(metadata["source_image"]).name) if metadata else None),
     )
@@ -343,6 +345,7 @@ def process_one_image(image_path: Path, raw_path: Path, args: argparse.Namespace
         result["source_image"] = Path(metadata["source_image"]).name
         result["crop_index"] = metadata["crop_index"]
         result["crop_bbox"] = metadata["bbox"]
+        result["crop_model_max_side"] = model_max_side
     write_json(raw_path, result)
     return {"image_path": str(image_path), "raw_json": str(raw_path), "result": result}
 

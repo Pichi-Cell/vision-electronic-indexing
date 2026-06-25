@@ -195,8 +195,8 @@ def prepare_image_data_url(
     max_side: int = DEFAULT_MAX_SIDE,
     jpeg_quality: int = DEFAULT_JPEG_QUALITY,
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-    if max_side and max_side < 256:
-        return None, error_response("max_side must be 0 for full resolution or at least 256.")
+    if max_side and max_side < 128:
+        return None, error_response("max_side must be 0 for full resolution or at least 128.")
 
     if jpeg_quality < 1 or jpeg_quality > 100:
         return None, error_response("jpeg_quality must be between 1 and 100.")
