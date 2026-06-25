@@ -3,7 +3,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = join(homedir(), ".pi", "agent", "vision-inventory");
 const VENV_DIR = join(CONFIG_DIR, ".venv");
 const VENV_PYTHON = process.platform === "win32" ? join(VENV_DIR, "Scripts", "python.exe") : join(VENV_DIR, "bin", "python");
+const VENV_PIP = process.platform === "win32" ? join(VENV_DIR, "Scripts", "pip.exe") : join(VENV_DIR, "bin", "pip");
 const CREDENTIALS_FILE = join(CONFIG_DIR, "credentials.json");
 
 type VisionCredentials = {
@@ -218,14 +219,45 @@ async function buildPythonEnv(): Promise<NodeJS.ProcessEnv> {
   };
 }
 
+function hasCompleteVenv(): boolean {
+  return existsSync(VENV_PYTHON) && existsSync(VENV_PIP);
+}
+
 async function getPythonCommand(): Promise<string> {
-  return existsSync(VENV_PYTHON) ? VENV_PYTHON : BASE_PYTHON_COMMAND;
+  return hasCompleteVenv() ? VENV_PYTHON : BASE_PYTHON_COMMAND;
+}
+
+function venvHelpText(): string {
+  return [
+    `Vision Inventory Python venv path: ${VENV_DIR}`,
+    "On Debian/Ubuntu, venv creation with pip requires python3-venv.",
+    "Install it with: sudo apt install python3-venv",
+    "If your system asks for a version-specific package, install that instead, e.g. sudo apt install python3.10-venv",
+  ].join("\n");
 }
 
 async function ensurePythonEnvironment(pi: ExtensionAPI, packageRoot: string, ctx: { ui: any; hasUI: boolean }): Promise<boolean> {
-  if (!existsSync(VENV_PYTHON)) {
+  if (existsSync(VENV_PYTHON) && !existsSync(VENV_PIP)) {
+    const message = `Existing Vision Inventory venv is incomplete because pip is missing.\n${venvHelpText()}`;
     if (!ctx.hasUI) {
-      ctx.ui.notify(`Vision Inventory Python venv is missing. Run /vision-inventory-setup interactively, or install dependencies manually with ${BASE_PYTHON_COMMAND} -m pip install -r ${join(packageRoot, "requirements.txt")}`, "error");
+      ctx.ui.notify(message, "error");
+      return false;
+    }
+
+    const recreate = await ctx.ui.confirm(
+      "Recreate incomplete Vision Inventory Python virtual environment?",
+      `${message}\n\nChoose No if you have not installed python3-venv yet. After installing it, rerun /vision-inventory-setup.`
+    );
+    if (!recreate) {
+      ctx.ui.notify(message, "error");
+      return false;
+    }
+    await rm(VENV_DIR, { recursive: true, force: true });
+  }
+
+  if (!hasCompleteVenv()) {
+    if (!ctx.hasUI) {
+      ctx.ui.notify(`Vision Inventory Python venv is missing or incomplete. Run /vision-inventory-setup interactively, or install dependencies manually with ${BASE_PYTHON_COMMAND} -m pip install -r ${join(packageRoot, "requirements.txt")}\n${venvHelpText()}`, "error");
       return false;
     }
 
@@ -237,7 +269,11 @@ async function ensurePythonEnvironment(pi: ExtensionAPI, packageRoot: string, ct
 
     await mkdir(CONFIG_DIR, { recursive: true });
     const venvResult = await pi.exec(BASE_PYTHON_COMMAND, ["-m", "venv", VENV_DIR], { timeout: 120_000 });
-    if (venvResult.code !== 0) throw new Error(venvResult.stderr || venvResult.stdout || "Python venv creation failed");
+    if (venvResult.code !== 0 || !hasCompleteVenv()) {
+      await rm(VENV_DIR, { recursive: true, force: true });
+      ctx.ui.notify(`${venvResult.stderr || venvResult.stdout || "Python venv creation failed"}\n${venvHelpText()}`, "error");
+      return false;
+    }
   }
 
   const deps = await pi.exec(VENV_PYTHON, ["-c", "import mcp, requests, PIL, dotenv; print('ok')"], { timeout: 10_000 });
@@ -252,7 +288,10 @@ async function ensurePythonEnvironment(pi: ExtensionAPI, packageRoot: string, ct
   if (!install) return false;
 
   const result = await pi.exec(VENV_PYTHON, ["-m", "pip", "install", "-r", join(packageRoot, "requirements.txt")], { timeout: 120_000 });
-  if (result.code !== 0) throw new Error(result.stderr || result.stdout || "pip install failed");
+  if (result.code !== 0) {
+    ctx.ui.notify(result.stderr || result.stdout || "pip install failed", "error");
+    return false;
+  }
   return true;
 }
 

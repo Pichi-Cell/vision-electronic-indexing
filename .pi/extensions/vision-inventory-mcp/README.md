@@ -18,6 +18,8 @@ Then in Pi:
 
 Setup creates/checks a Pi-managed Python virtual environment at `~/.pi/agent/vision-inventory/.venv`, installs Python dependencies there when approved, warns that datasheet lookup needs a separate web-search/browser capability, and prompts for Cloudflare Workers AI API token credentials when needed.
 
+On Debian/Ubuntu, Python venv creation may require `python3-venv` or a version-specific package such as `python3.10-venv`. If setup reports that `ensurepip` is unavailable, install the package, remove the incomplete venv with `rm -rf ~/.pi/agent/vision-inventory/.venv`, and rerun `/vision-inventory-setup`.
+
 Credentials are stored at:
 
 ```text
