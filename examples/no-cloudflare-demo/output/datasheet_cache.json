@@ -1,0 +1,18 @@
+{
+  "NE555P": {
+    "normalized_part": "NE555P",
+    "description": "single precision timer DIP",
+    "datasheet_url": "https://www.ti.com/lit/ds/symlink/ne555.pdf",
+    "manufacturer": "Texas Instruments",
+    "verified": true,
+    "notes": "Demo cache entry; verify sources for real BOM work."
+  },
+  "LM358N": {
+    "normalized_part": "LM358N",
+    "description": "dual operational amplifier DIP",
+    "datasheet_url": "https://www.ti.com/lit/ds/symlink/lm358.pdf",
+    "manufacturer": "Texas Instruments",
+    "verified": true,
+    "notes": "Demo cache entry; verify sources for real BOM work."
+  }
+}

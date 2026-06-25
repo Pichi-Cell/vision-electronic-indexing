@@ -1,0 +1,18 @@
+{
+  "LM358N": {
+    "normalized_part": "LM358N",
+    "description": "",
+    "datasheet_url": "",
+    "manufacturer": "",
+    "verified": false,
+    "notes": ""
+  },
+  "NE555P": {
+    "normalized_part": "NE555P",
+    "description": "",
+    "datasheet_url": "",
+    "manufacturer": "",
+    "verified": false,
+    "notes": ""
+  }
+}

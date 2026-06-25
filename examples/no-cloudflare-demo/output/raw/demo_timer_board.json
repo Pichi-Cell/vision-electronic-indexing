@@ -1,0 +1,28 @@
+{
+  "image": "demo_timer_board.jpg",
+  "items": [
+    {
+      "item_type": "IC",
+      "count_index": 1,
+      "visible_quantity": 1,
+      "package_marking": "NE555P\nTEXAS INSTRUMENTS",
+      "marking_confidence": "high",
+      "likely_part": "NE555P",
+      "description": "8-pin DIP IC with readable NE555P marking",
+      "position_hint": "center-left",
+      "needs_review": false
+    },
+    {
+      "item_type": "IC",
+      "count_index": 2,
+      "visible_quantity": 1,
+      "package_marking": "LM358N",
+      "marking_confidence": "medium",
+      "likely_part": "LM358N",
+      "description": "8-pin DIP IC with readable LM358N marking",
+      "position_hint": "center-right",
+      "needs_review": false
+    }
+  ],
+  "warnings": []
+}
