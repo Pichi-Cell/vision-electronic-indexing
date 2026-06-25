@@ -99,7 +99,7 @@ Useful options:
 ```text
 /vision-inventory-agent-bom ./photos ./output --recursive
 /vision-inventory-agent-bom ./photos ./output --limit 3
-/vision-inventory-agent-bom ./photos ./output --max-side 4000 --jpeg-quality 96
+/vision-inventory-agent-bom ./photos ./output --max-side 0 --jpeg-quality 96
 ```
 
 The agent workflow will:
@@ -135,13 +135,13 @@ verified=false
 
 ## CSV output columns
 
-`inventory.csv` is deduplicated by normalized part number. Multiple images, or multiple candidates from one image, can merge into one BOM row.
+`inventory.csv` is deduplicated by `likely_part`, the main/final part number column. Multiple images, or multiple candidates from one image, can merge into one BOM row when they resolve to the same `likely_part`.
 
 Columns:
 
 | Column | Description |
 |---|---|
-| `normalized_part` | Final normalized part number, usually from datasheet enrichment. |
+| `likely_part` | Main dedupe key/final likely part number, usually from datasheet enrichment. |
 | `candidate_parts` | Candidate part numbers extracted from visual markings. |
 | `amount` | Estimated quantity for the merged BOM row. |
 | `sighting_count` | Number of evidence rows merged into this BOM row. |
@@ -242,7 +242,7 @@ Before sending an image to Cloudflare Workers AI, the Python server:
 
 1. Opens the image with Pillow.
 2. Applies EXIF orientation correction.
-3. Resizes only if the image is larger than `max_side`.
+3. Sends full resolution by default; resizes only when `max_side` is set to a positive value and the image is larger than that limit.
 4. Converts transparency to a white background.
 5. Converts the image to RGB.
 6. Encodes it as JPEG.
@@ -251,7 +251,7 @@ Before sending an image to Cloudflare Workers AI, the Python server:
 Defaults:
 
 ```text
-max_side: 4000
+max_side: 0 (full resolution)
 jpeg_quality: 96
 model: @cf/meta/llama-4-scout-17b-16e-instruct
 ```

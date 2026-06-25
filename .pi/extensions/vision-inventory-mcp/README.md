@@ -60,7 +60,7 @@ The agent workflow:
 - `/vision-inventory-agent-bom` runs the full agent-assisted datasheet-enrichment workflow.
 - `/vision-inventory-restart` restarts the local Python vision bridge.
 
-Options are forwarded to `scripts/inventory_folder_to_csv.py`, such as `--recursive`, `--limit`, `--max-side`, and `--jpeg-quality`.
+Options are forwarded to `scripts/inventory_folder_to_csv.py`, such as `--recursive`, `--limit`, `--max-side`, and `--jpeg-quality`. The default `--max-side 0` sends images at full resolution; set a positive value to resize.
 
 ## Agent tools
 
@@ -81,7 +81,7 @@ This package intentionally does **not** bundle:
 The main output is `inventory.csv`, with columns:
 
 ```text
-normalized_part
+likely_part
 candidate_parts
 amount
 sighting_count

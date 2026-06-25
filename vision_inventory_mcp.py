@@ -56,7 +56,7 @@ except ImportError:  # pragma: no cover - compatibility fallback
 
 
 DEFAULT_MODEL = os.getenv("WORKERS_AI_MODEL", "@cf/meta/llama-4-scout-17b-16e-instruct")
-DEFAULT_MAX_SIDE = 4000
+DEFAULT_MAX_SIDE = 0
 DEFAULT_JPEG_QUALITY = 96
 DEFAULT_MAX_TOKENS = 1600
 DEFAULT_TEMPERATURE = 0.05
@@ -184,8 +184,8 @@ def prepare_image_data_url(
     max_side: int = DEFAULT_MAX_SIDE,
     jpeg_quality: int = DEFAULT_JPEG_QUALITY,
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-    if max_side < 256:
-        return None, error_response("max_side must be at least 256.")
+    if max_side and max_side < 256:
+        return None, error_response("max_side must be 0 for full resolution or at least 256.")
 
     if jpeg_quality < 1 or jpeg_quality > 100:
         return None, error_response("jpeg_quality must be between 1 and 100.")
@@ -194,8 +194,9 @@ def prepare_image_data_url(
         image = Image.open(image_path)
         image = ImageOps.exif_transpose(image)
 
-        resample = getattr(Image, "Resampling", Image).LANCZOS
-        image.thumbnail((max_side, max_side), resample)
+        if max_side:
+            resample = getattr(Image, "Resampling", Image).LANCZOS
+            image.thumbnail((max_side, max_side), resample)
 
         # Convert transparency to white background before JPEG encoding.
         if image.mode in ("RGBA", "LA"):

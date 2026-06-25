@@ -362,7 +362,7 @@ export default function (pi: ExtensionAPI) {
     ],
     parameters: Type.Object({
       image_path: Type.String({ description: "Path to the image file, relative to the project root or absolute." }),
-      max_side: Type.Optional(Type.Integer({ description: "Maximum resized image side before submission.", default: 4000 })),
+      max_side: Type.Optional(Type.Integer({ description: "Maximum resized image side before submission. Use 0 for full resolution.", default: 0 })),
       jpeg_quality: Type.Optional(Type.Integer({ description: "JPEG conversion quality from 1 to 100.", default: 96 })),
       custom_prompt: Type.Optional(Type.String({ description: "Optional custom analysis prompt." })),
     }),
@@ -383,7 +383,7 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       folder_path: Type.String({ description: "Folder path, relative to the project root or absolute." }),
       recursive: Type.Optional(Type.Boolean({ description: "Whether to scan subfolders.", default: false })),
-      max_side: Type.Optional(Type.Integer({ description: "Maximum resized image side before submission.", default: 4000 })),
+      max_side: Type.Optional(Type.Integer({ description: "Maximum resized image side before submission. Use 0 for full resolution.", default: 0 })),
       jpeg_quality: Type.Optional(Type.Integer({ description: "JPEG conversion quality from 1 to 100.", default: 96 })),
       limit: Type.Optional(Type.Integer({ description: "Optional maximum number of images to process." })),
     }),

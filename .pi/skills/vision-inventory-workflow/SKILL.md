@@ -23,7 +23,7 @@ Use `/vision-inventory-setup` to configure credentials and check/install Python 
 /vision-inventory-agent-bom <image_folder> <output_dir> [options]
 ```
 
-Options are forwarded to `scripts/inventory_folder_to_csv.py`, for example `--recursive`, `--limit 3`, `--max-side 4000`, and `--jpeg-quality 96`.
+Options are forwarded to `scripts/inventory_folder_to_csv.py`, for example `--recursive`, `--limit 3`, `--max-side 0`, and `--jpeg-quality 96`. `--max-side 0` means full resolution and is the default.
 
 ## Agent Rules
 

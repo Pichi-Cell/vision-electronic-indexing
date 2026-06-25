@@ -261,7 +261,7 @@ def image_part_rows(results: List[Dict[str, Any]], cache: Dict[str, Any]) -> Lis
             rows.append({
                 "image": image_name,
                 "candidate_part": "",
-                "normalized_part": "",
+                "likely_part": "",
                 "amount": 0,
                 "description": "",
                 "datasheet_url": "",
@@ -286,6 +286,7 @@ def image_part_rows(results: List[Dict[str, Any]], cache: Dict[str, Any]) -> Lis
 
         for candidate, candidate_evidence in sorted(evidence_by_candidate.items()):
             enrichment = lookup_enrichment(candidate, cache)
+            likely_part = str(enrichment.get("normalized_part") or candidate).strip().upper()
             amount = estimate_amount_for_candidate(result, candidate, evidence_count=len(candidate_evidence))
             observed_markings = sorted({row["observed_marking"] for row in candidate_evidence})
             observations = "; ".join(
@@ -298,7 +299,7 @@ def image_part_rows(results: List[Dict[str, Any]], cache: Dict[str, Any]) -> Lis
             rows.append({
                 "image": image_name,
                 "candidate_part": candidate,
-                "normalized_part": enrichment.get("normalized_part", candidate),
+                "likely_part": likely_part,
                 "amount": amount,
                 "description": enrichment.get("description", ""),
                 "datasheet_url": enrichment.get("datasheet_url", ""),
@@ -328,7 +329,7 @@ def write_final_csv(results: List[Dict[str, Any]], cache: Dict[str, Any], output
     evidence_fieldnames = [
         "image",
         "candidate_part",
-        "normalized_part",
+        "likely_part",
         "amount",
         "description",
         "datasheet_url",
@@ -345,7 +346,7 @@ def write_final_csv(results: List[Dict[str, Any]], cache: Dict[str, Any], output
     grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     no_part_rows: List[Dict[str, Any]] = []
     for row in evidence_rows:
-        part = str(row.get("normalized_part") or row.get("candidate_part") or "").strip().upper()
+        part = str(row.get("likely_part") or row.get("candidate_part") or "").strip().upper()
         if not part:
             no_part_rows.append(row)
         else:
@@ -362,7 +363,7 @@ def write_final_csv(results: List[Dict[str, Any]], cache: Dict[str, Any], output
         amount = sum(int(row.get("amount", 0) or 0) for row in rows_for_part)
 
         bom_rows.append({
-            "normalized_part": part,
+            "likely_part": part,
             "candidate_parts": " | ".join(sorted({str(row["candidate_part"]) for row in rows_for_part if row.get("candidate_part")})),
             "amount": amount,
             "sighting_count": len(rows_for_part),
@@ -380,7 +381,7 @@ def write_final_csv(results: List[Dict[str, Any]], cache: Dict[str, Any], output
 
     for row in no_part_rows:
         bom_rows.append({
-            "normalized_part": "",
+            "likely_part": "",
             "candidate_parts": "",
             "amount": 0,
             "sighting_count": 1,
@@ -397,7 +398,7 @@ def write_final_csv(results: List[Dict[str, Any]], cache: Dict[str, Any], output
         })
 
     bom_fieldnames = [
-        "normalized_part",
+        "likely_part",
         "candidate_parts",
         "amount",
         "sighting_count",
@@ -424,7 +425,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recursive", action="store_true", help="Scan image_folder recursively")
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of images to process")
     parser.add_argument("--skip-vision", action="store_true", help="Reuse existing output_dir/raw/*.json instead of calling vision AI")
-    parser.add_argument("--max-side", type=int, default=vision.DEFAULT_MAX_SIDE, help="Maximum resized image side")
+    parser.add_argument("--max-side", type=int, default=vision.DEFAULT_MAX_SIDE, help="Maximum resized image side; use 0 for full resolution (default)")
     parser.add_argument("--jpeg-quality", type=int, default=vision.DEFAULT_JPEG_QUALITY, help="JPEG quality for model input")
     return parser.parse_args()
 
