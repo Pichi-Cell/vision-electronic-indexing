@@ -1,6 +1,6 @@
-# Vision Electronic Indexing for Pi
+# Vision Electronic Indexing
 
-Agent-assisted electronics parts/PCB photo indexing for Pi. The package processes images with Cloudflare Workers AI, extracts visible IC/package markings, prepares parts for datasheet lookup, and produces an enriched inventory CSV.
+Agent-assisted electronics parts/PCB photo indexing. The package processes images with Cloudflare Workers AI, extracts visible IC/package markings, prepares parts for datasheet lookup, and produces an enriched inventory CSV. It is intended to be used with a coding agent to populate data and exposes tools to do so with: Pi and an alternative MCP server for other agent harnesses.
 
 Typical flow:
 
@@ -23,8 +23,6 @@ The vision step does **not** perform datasheet lookup or invent part details. Da
 ```bash
 pi install npm:vision-electronic-indexing-pi
 ```
-
-For local development from this repository, open the repo in Pi and trust the project. Do not also install the npm package while working inside this repo, because the project-local extension and npm package register the same tools.
 
 ### 2. Plan for datasheet web search
 
