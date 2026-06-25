@@ -9,7 +9,7 @@
       "enabled": true,
       "env": {
         "CLOUDFLARE_ACCOUNT_ID": "your_cloudflare_account_id",
-        "CLOUDFLARE_AUTH_TOKEN": "your_cloudflare_workers_ai_token"
+        "CLOUDFLARE_AUTH_TOKEN": "your_cloudflare_workers_ai_api_token"
       }
     }
   }

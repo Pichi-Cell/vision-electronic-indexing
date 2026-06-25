@@ -16,13 +16,15 @@ Then in Pi:
 /vision-inventory-setup
 ```
 
-Setup checks Python dependencies, checks whether a web-search/browser tool is available for datasheet lookup, and prompts for Cloudflare Workers AI credentials when needed.
+Setup creates/checks a Pi-managed Python virtual environment at `~/.pi/agent/vision-inventory/.venv`, installs Python dependencies there when approved, warns that datasheet lookup needs a separate web-search/browser capability, and prompts for Cloudflare Workers AI API token credentials when needed.
 
 Credentials are stored at:
 
 ```text
 ~/.pi/agent/vision-inventory/credentials.json
 ```
+
+The file is written with `chmod 600` when supported. Token input may be visible depending on your Pi UI; avoid entering credentials while screen sharing.
 
 Change them later with:
 
@@ -66,15 +68,15 @@ Options are forwarded to `scripts/inventory_folder_to_csv.py`, such as `--recurs
 
 - `vision_inventory_process_image` — analyze one electronics/PCB image.
 - `vision_inventory_process_folder` — analyze all supported images in a folder.
-- `vision_inventory_save` — save inventory output as JSON or CSV.
+- `vision_inventory_save` — save inventory output as JSON or quick CSV export. Use `/vision-inventory-bom` for the full BOM/evidence workflow.
 
 ## External dependencies not bundled
 
 This package intentionally does **not** bundle:
 
-- Python packages from `requirements.txt`: `mcp`, `requests`, `pillow`, `python-dotenv`; optional `pillow-heif`.
+- Python packages from `requirements.txt`: `mcp`, `requests`, `pillow`, `python-dotenv`; optional `pillow-heif`. Pi setup installs these into the package-managed venv when approved.
 - A Pi web-search/browser tool or skill for datasheet lookup.
-- Cloudflare Workers AI credentials.
+- Cloudflare Workers AI API token credentials.
 
 ## Output
 

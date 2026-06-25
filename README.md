@@ -26,9 +26,9 @@ pi install npm:vision-electronic-indexing-pi
 
 For local development from this repository, open the repo in Pi and trust the project. Do not also install the npm package while working inside this repo, because the project-local extension and npm package register the same tools.
 
-### 2. Install/enable an agent web-search dependency
+### 2. Plan for datasheet web search
 
-Datasheet enrichment requires a Pi web-search or browser tool/skill. This package intentionally does **not** bundle one.
+Datasheet enrichment requires a separate Pi web-search or browser tool/skill. This package intentionally does **not** bundle one and does not try to auto-detect one because detection is unreliable.
 
 Examples of acceptable capabilities:
 
@@ -36,7 +36,7 @@ Examples of acceptable capabilities:
 - a browser automation skill
 - another trusted web-search extension/tool
 
-If no search/browser capability is available, the agent workflow can still generate `parts_to_lookup.json`, but it cannot verify datasheets.
+If no search/browser capability is available, the workflow can still generate `parts_to_lookup.json`, but it cannot verify datasheets. Fill `datasheet_cache.json` manually in that case.
 
 ### 3. Configure Cloudflare credentials
 
@@ -46,7 +46,7 @@ Start Pi and run:
 /vision-inventory-setup
 ```
 
-The setup command checks Python dependencies, checks for web-search/browser capability, and prompts for Cloudflare Workers AI credentials the first time.
+The setup command creates/checks a Pi-managed Python virtual environment under `~/.pi/agent/vision-inventory/.venv`, installs Python dependencies there when approved, warns that datasheet enrichment needs a separate web-search/browser capability, and prompts for Cloudflare Workers AI API token credentials the first time.
 
 Credentials are stored at:
 
@@ -54,7 +54,7 @@ Credentials are stored at:
 ~/.pi/agent/vision-inventory/credentials.json
 ```
 
-The file is written with `chmod 600` when supported.
+The file is written with `chmod 600` when supported. Token input may be visible depending on your Pi UI; avoid entering credentials while screen sharing.
 
 To change credentials later:
 
@@ -66,9 +66,9 @@ Environment variables also work and override stored credentials:
 
 ```bash
 export CLOUDFLARE_ACCOUNT_ID=your_account_id
-export CLOUDFLARE_AUTH_TOKEN=your_workers_ai_token
-# or
-export CLOUDFLARE_API_TOKEN=your_workers_ai_token
+export CLOUDFLARE_AUTH_TOKEN=your_workers_ai_api_token
+# CLOUDFLARE_API_TOKEN is also accepted as an alias:
+export CLOUDFLARE_API_TOKEN=your_workers_ai_api_token
 ```
 
 Optional model override:
@@ -91,7 +91,9 @@ For other harnesses, use the universal installer:
 curl -fsSL https://raw.githubusercontent.com/Pichi-Cell/vision-electronic-indexing-mcp/main/.universal/scripts/quick-install.sh -o /tmp/vei-install.sh && bash /tmp/vei-install.sh
 ```
 
-This installs to `~/.vei/`, sets up a Python venv, prompts for Cloudflare credentials, installs the agent skill, and **automatically configures the MCP server** in your agent's settings. **Requires an MCP-capable agent** (OpenCode, Claude Code, Codex CLI, Cursor, etc.).
+This installs to `~/.vei/`, sets up a Python venv, prompts for Cloudflare Workers AI API token credentials, installs the agent skill, and **automatically configures the MCP server** in your agent's settings. **Requires an MCP-capable agent** (OpenCode, Claude Code, Codex CLI, Cursor, etc.).
+
+Warning: some MCP clients store environment variables in plaintext JSON config files. Prefer shell environment variables or your agent's secret storage if available.
 
 Other harnesses can also connect directly to the Python MCP server:
 
@@ -116,9 +118,10 @@ Either copy `.env.example` to `.env` in the repository root:
 ```bash
 cp .env.example .env
 # edit .env and set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AUTH_TOKEN
+# CLOUDFLARE_AUTH_TOKEN should be your Cloudflare Workers AI API token.
 ```
 
-or put the credentials directly in your harness MCP server configuration.
+or put the credentials directly in your harness MCP server configuration. Be aware that many harness config files store these values in plaintext.
 
 ### 3. Add the MCP server to your harness
 
@@ -141,14 +144,16 @@ Each config should point to the repository-root server file, for example:
       "args": ["/path/to/vision-electronic-indexing-mcp/vision_inventory_mcp.py"],
       "env": {
         "CLOUDFLARE_ACCOUNT_ID": "your_cloudflare_account_id",
-        "CLOUDFLARE_AUTH_TOKEN": "your_cloudflare_workers_ai_token"
+        "CLOUDFLARE_AUTH_TOKEN": "your_cloudflare_workers_ai_api_token"
       }
     }
   }
 }
 ```
 
-The `.universal/configs/*.json.example` files are strict JSON; copy the appropriate file into your harness config location and adjust paths/credentials.
+The `.universal/configs/*.json.example` files are strict JSON; copy the appropriate file into your harness config location and adjust paths/credentials. OpenCode uses a harness-specific `mcp` shape; the other examples use `mcpServers`.
+
+The older `.universal/setup/install.sh` and `.universal/setup/install.ps1` scripts are manual/legacy helpers. Prefer `.universal/scripts/quick-install.sh` for automated universal setup.
 
 The raw MCP server exposes these tool names:
 
@@ -156,7 +161,7 @@ The raw MCP server exposes these tool names:
 |---|---|
 | `process_image` | Analyze one electronics/PCB image. |
 | `process_image_folder` | Analyze a folder of supported images. |
-| `save_inventory` | Save inventory output as JSON or CSV. |
+| `save_inventory` | Save inventory output as JSON or quick CSV export. Use the batch workflow for full BOM/evidence output. |
 
 ### 4. Install the universal skill/prompt, if your harness supports them
 
@@ -293,7 +298,7 @@ Command summary:
 |---|---|
 | `vision_inventory_process_image` | Analyze one electronics/PCB image. |
 | `vision_inventory_process_folder` | Analyze a folder of supported images. |
-| `vision_inventory_save` | Save inventory output as JSON or CSV. |
+| `vision_inventory_save` | Save inventory output as JSON or quick CSV export. For the full BOM workflow, use `/vision-inventory-bom` or `scripts/inventory_folder_to_csv.py`. |
 
 ## Manual shell workflow
 
@@ -301,6 +306,7 @@ You can run the deterministic workflow without Pi commands:
 
 ```bash
 python3 -m pip install -r requirements.txt
+python3 scripts/inventory_folder_to_csv.py ./photos ./output --validate-setup
 python3 scripts/inventory_folder_to_csv.py ./photos ./output
 ```
 
@@ -310,17 +316,42 @@ Then fill `output/datasheet_cache.json` manually or with an agent, and regenerat
 python3 scripts/inventory_folder_to_csv.py ./photos ./output --skip-vision
 ```
 
+## No-Cloudflare demo and sample output
+
+A fixture-based demo is available at:
+
+```text
+examples/no-cloudflare-demo/
+```
+
+Run it without Cloudflare credentials:
+
+```bash
+python3 scripts/inventory_folder_to_csv.py ./examples/no-cloudflare-demo/photos ./examples/no-cloudflare-demo/output --skip-vision
+```
+
+The demo includes mock raw vision JSON, a small `datasheet_cache.json`, and generated sample outputs:
+
+```text
+examples/no-cloudflare-demo/output/parts_to_lookup.json
+examples/no-cloudflare-demo/output/datasheet_cache.json
+examples/no-cloudflare-demo/output/inventory.csv
+examples/no-cloudflare-demo/output/inventory_evidence.csv
+```
+
+Use these files to understand the expected output shapes before running real image analysis.
+
 ## Python requirements
 
 Python 3.10 or newer is recommended.
 
-Required:
+Required versions are constrained in `requirements.txt` for reproducible installs:
 
 ```text
-mcp
-requests
-pillow
-python-dotenv
+mcp>=1.0,<2.0
+requests>=2.31,<3.0
+pillow>=10.0,<12.0
+python-dotenv>=1.0,<2.0
 ```
 
 Install:
@@ -408,7 +439,7 @@ MCP tools:
 |---|---|
 | `process_image` | Analyze one image and return structured visible inventory data. |
 | `process_image_folder` | Analyze all supported images in a folder. |
-| `save_inventory` | Save inventory output to JSON or CSV. |
+| `save_inventory` | Save inventory output to JSON or quick CSV export. Use `scripts/inventory_folder_to_csv.py` for the full BOM/evidence workflow. |
 
 Run directly for MCP-compatible clients:
 
@@ -426,7 +457,7 @@ Example MCP client configuration:
       "args": ["/path/to/vision_inventory_mcp.py"],
       "env": {
         "CLOUDFLARE_ACCOUNT_ID": "your_cloudflare_account_id",
-        "CLOUDFLARE_AUTH_TOKEN": "your_cloudflare_workers_ai_token"
+        "CLOUDFLARE_AUTH_TOKEN": "your_cloudflare_workers_ai_api_token"
       }
     }
   }

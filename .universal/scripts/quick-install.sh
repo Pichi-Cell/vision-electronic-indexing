@@ -92,7 +92,7 @@ if [ -t 0 ] && [ -z "$CF_ID" ]; then
   CF_TOKEN="${CF_TOKEN:-}"
 fi
 
-if { [ -n "$CF_ID" ] && [ "$CF_ID" != "your_cloudflare_account_id" ]; } || { [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "your_cloudflare_workers_ai_token" ]; }; then
+if { [ -n "$CF_ID" ] && [ "$CF_ID" != "your_cloudflare_account_id" ]; } || { [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "your_cloudflare_workers_ai_token" ] && [ "$CF_TOKEN" != "your_cloudflare_workers_ai_api_token" ]; }; then
   CF_ID_VALUE="$CF_ID" CF_TOKEN_VALUE="$CF_TOKEN" "$VENV_DIR/bin/python" - "$ENV_FILE" <<'PY'
 import os
 import sys
@@ -104,7 +104,7 @@ cf_id = os.environ.get("CF_ID_VALUE", "")
 cf_token = os.environ.get("CF_TOKEN_VALUE", "")
 if cf_id and cf_id != "your_cloudflare_account_id":
     updates["CLOUDFLARE_ACCOUNT_ID"] = cf_id
-if cf_token and cf_token != "your_cloudflare_workers_ai_token":
+if cf_token and cf_token not in {"your_cloudflare_workers_ai_token", "your_cloudflare_workers_ai_api_token"}:
     updates["CLOUDFLARE_AUTH_TOKEN"] = cf_token
 
 lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
