@@ -10,6 +10,12 @@ photos -> vision extraction -> raw JSON + evidence -> agent datasheet verificati
 
 The vision step does **not** perform datasheet lookup or invent part details. Datasheet enrichment is handled by a Pi agent with a web-search/browser tool or by manual review.
 
+## Which setup should I use?
+
+- **Using Pi?** Install the package with `pi install npm:vision-electronic-indexing-pi`, then run `/vision-inventory-setup`.
+- **Using Claude Code, Codex CLI, OpenCode, Cursor, or another MCP-capable harness?** Use the recommended universal installer in `.universal/scripts/quick-install.sh`.
+- **Using plain Python or manual MCP configuration?** Install `requirements.txt`, configure Cloudflare credentials, and run `vision_inventory_mcp.py` directly.
+
 ## Quick setup with Pi
 
 ### 1. Install the Pi package
