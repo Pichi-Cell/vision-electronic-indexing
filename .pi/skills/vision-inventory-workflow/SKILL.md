@@ -1,6 +1,6 @@
 ---
 name: vision-inventory-workflow
-description: Run the Vision Electronic Indexing workflow for electronics/PCB photos: process images, create parts_to_lookup.json, verify datasheets with web search, fill datasheet_cache.json, regenerate CSV, and summarize uncertainties.
+description: "Run the Vision Electronic Indexing workflow for electronics/PCB photos: process images, create parts_to_lookup.json, verify datasheets with web search, fill datasheet_cache.json, regenerate CSV, and summarize uncertainties."
 ---
 
 # Vision Inventory Workflow
