@@ -416,7 +416,9 @@ The batch workflow builds one evidence row per image/candidate part, so one phot
 
 For photos where some IC markings are upside-down or rotated relative to others, use `--segment-ics`. This enables a Pillow-only segmentation pre-pass that detects dark IC-like rectangular packages, writes crops to `output/crops/`, and sends each crop with instructions to check 0/90/180/270 degree orientations before OCR. Segmented crop submissions are resized to `max_side=250` regardless of the full-image `--max-side` setting. If no IC-like crops are found for an image, the workflow falls back to the full image.
 
-Segmentation increases API calls because each crop is processed separately. Tune detection with `--segment-max-crops`, `--segment-dark-threshold`, `--segment-detection-max-side`, and `--segment-padding-ratio` if needed.
+Segmented crops are context-masked by default: pixels outside the detected IC body plus a small focus padding are whitened before saving the crop. This prevents partial neighboring ICs at crop edges from being counted as separate parts. Use `--no-segment-mask-context` only when you need to debug or preserve surrounding context.
+
+Segmentation increases API calls because each crop is processed separately. Tune detection with `--segment-max-crops`, `--segment-dark-threshold`, `--segment-detection-max-side`, `--segment-padding-ratio`, and `--segment-focus-padding-ratio` if needed.
 
 This improves handling of mixed IC photos, repeated logic chips, and rotated packages, but OCR can still miss, merge, or misread small markings. Review raw JSON and evidence rows when accuracy matters.
 

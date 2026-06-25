@@ -29,7 +29,7 @@ When the user provides a folder of electronics/PCB photos:
    ```
    python3 scripts/inventory_folder_to_csv.py <image_folder> <output_dir> [options]
    ```
-   Options: `--recursive`, `--limit N`, `--segment-ics`, `--max-side 0`, `--jpeg-quality 85`. Use `--segment-ics` when ICs in one image have mixed orientations or upside-down markings; segmented crop submissions are resized to `max_side=250`.
+   Options: `--recursive`, `--limit N`, `--segment-ics`, `--max-side 0`, `--jpeg-quality 85`. Use `--segment-ics` when ICs in one image have mixed orientations or upside-down markings; segmented crop submissions are resized to `max_side=250` and context outside the detected IC body is whitened by default so partial neighboring ICs are not counted.
 
 2. **Read the parts to look up:**
    Read `output_dir/parts_to_lookup.json`.

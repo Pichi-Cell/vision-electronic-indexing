@@ -198,6 +198,25 @@ def write_ic_crops(image_path: Path, crops_dir: Path, args: argparse.Namespace) 
             clamp(y2 + pad, 0, height),
         )
         crop = image.crop(crop_box)
+        if args.segment_mask_context:
+            focus_pad = int(max(x2 - x1, y2 - y1) * args.segment_focus_padding_ratio)
+            focus_box = (
+                clamp(x1 - focus_pad, crop_box[0], crop_box[2]),
+                clamp(y1 - focus_pad, crop_box[1], crop_box[3]),
+                clamp(x2 + focus_pad, crop_box[0], crop_box[2]),
+                clamp(y2 + focus_pad, crop_box[1], crop_box[3]),
+            )
+            rel_focus = (
+                focus_box[0] - crop_box[0],
+                focus_box[1] - crop_box[1],
+                focus_box[2] - crop_box[0],
+                focus_box[3] - crop_box[1],
+            )
+            masked = Image.new("RGB", crop.size, (255, 255, 255))
+            masked.paste(crop.crop(rel_focus), rel_focus)
+            crop = masked
+        else:
+            focus_box = (x1, y1, x2, y2)
         crop_path = crops_dir / f"{safe_stem(image_path)}__ic_{index:02d}.jpg"
         crop.save(crop_path, format="JPEG", quality=args.jpeg_quality, optimize=True)
         crop_entries.append({
@@ -205,6 +224,8 @@ def write_ic_crops(image_path: Path, crops_dir: Path, args: argparse.Namespace) 
             "source_image": str(image_path),
             "crop_index": index,
             "bbox": crop_box,
+            "focus_bbox": focus_box,
+            "context_masked": args.segment_mask_context,
         })
     return crop_entries
 
@@ -329,6 +350,8 @@ Additional crop/orientation instructions:
 - The crop may be rotated or upside-down relative to the full board.
 - Mentally check 0, 90, 180, and 270 degree orientations before transcribing package text.
 - Prefer the orientation that makes letters/numbers readable as normal IC top markings.
+- Only analyze the central/unmasked IC package in this crop.
+- Ignore partial ICs, partial packages, or cut-off markings near crop edges; they are context/noise and must not become items.
 - Return the marking for this cropped IC/package only when possible.
 """.strip()
 
@@ -345,6 +368,8 @@ def process_one_image(image_path: Path, raw_path: Path, args: argparse.Namespace
         result["source_image"] = Path(metadata["source_image"]).name
         result["crop_index"] = metadata["crop_index"]
         result["crop_bbox"] = metadata["bbox"]
+        result["crop_focus_bbox"] = metadata.get("focus_bbox")
+        result["crop_context_masked"] = metadata.get("context_masked", False)
         result["crop_model_max_side"] = model_max_side
     write_json(raw_path, result)
     return {"image_path": str(image_path), "raw_json": str(raw_path), "result": result}
@@ -803,6 +828,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--segment-dark-threshold", type=int, default=95, help="Grayscale threshold for dark IC/package segmentation (0-255, lower is stricter)")
     parser.add_argument("--segment-detection-max-side", type=int, default=1200, help="Maximum image side used internally for segmentation detection")
     parser.add_argument("--segment-padding-ratio", type=float, default=0.22, help="Padding around each detected IC crop as a fraction of its largest side")
+    parser.add_argument("--segment-focus-padding-ratio", type=float, default=0.04, help="Extra unmasked padding around the detected IC body when masking crop context")
+    parser.add_argument("--no-segment-mask-context", dest="segment_mask_context", action="store_false", help="Do not whiten context outside the detected IC body in segmented crops")
+    parser.set_defaults(segment_mask_context=True)
     parser.add_argument("--max-side", type=int, default=vision.DEFAULT_MAX_SIDE, help="Maximum resized image side; use 0 for full resolution (default)")
     parser.add_argument("--jpeg-quality", type=int, default=vision.DEFAULT_JPEG_QUALITY, help="JPEG quality for model input")
     return parser.parse_args()
