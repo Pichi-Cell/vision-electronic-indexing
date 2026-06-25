@@ -72,7 +72,7 @@ echo -e "  ${GREEN}Done.${NC}"
 
 # 3. Credentials
 echo ""
-echo -e "${GREEN}[4/6]${NC} Cloudflare Workers AI credentials"
+echo -e "${GREEN}[4/6]${NC} Cloudflare Workers AI API token credentials"
 ENV_FILE="$INSTALL_DIR/.env"
 if [ ! -f "$ENV_FILE" ]; then
   cp "$INSTALL_DIR/.env.example" "$ENV_FILE"
@@ -86,30 +86,50 @@ if [ -t 0 ] && [ -z "$CF_ID" ]; then
   echo "  Get these from https://dash.cloudflare.com/ -> AI -> Workers AI -> Use REST API"
   echo "  Enter your credentials (or press enter to edit .env later):"
   read -rp "  Cloudflare Account ID: " CF_ID || true
-  read -rp "  Cloudflare API Token: " CF_TOKEN || true
+  read -rsp "  Cloudflare Workers AI API token: " CF_TOKEN || true
+  echo ""
   CF_ID="${CF_ID:-}"
   CF_TOKEN="${CF_TOKEN:-}"
 fi
 
-if [ -n "$CF_ID" ] && [ "$CF_ID" != "your_cloudflare_account_id" ]; then
-  if [[ "${OSTYPE:-}" == "darwin"* ]]; then
-    sed -i '' "s/your_cloudflare_account_id/$CF_ID/" "$ENV_FILE"
-  else
-    sed -i "s/your_cloudflare_account_id/$CF_ID/" "$ENV_FILE"
-  fi
-fi
-if [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "your_cloudflare_workers_ai_token" ]; then
-  if [[ "${OSTYPE:-}" == "darwin"* ]]; then
-    sed -i '' "s/your_cloudflare_workers_ai_token/$CF_TOKEN/" "$ENV_FILE"
-  else
-    sed -i "s/your_cloudflare_workers_ai_token/$CF_TOKEN/" "$ENV_FILE"
-  fi
+if { [ -n "$CF_ID" ] && [ "$CF_ID" != "your_cloudflare_account_id" ]; } || { [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "your_cloudflare_workers_ai_token" ]; }; then
+  CF_ID_VALUE="$CF_ID" CF_TOKEN_VALUE="$CF_TOKEN" "$VENV_DIR/bin/python" - "$ENV_FILE" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+updates = {}
+cf_id = os.environ.get("CF_ID_VALUE", "")
+cf_token = os.environ.get("CF_TOKEN_VALUE", "")
+if cf_id and cf_id != "your_cloudflare_account_id":
+    updates["CLOUDFLARE_ACCOUNT_ID"] = cf_id
+if cf_token and cf_token != "your_cloudflare_workers_ai_token":
+    updates["CLOUDFLARE_AUTH_TOKEN"] = cf_token
+
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+seen = set()
+out = []
+for line in lines:
+    key = line.split("=", 1)[0] if "=" in line else ""
+    if key in updates:
+        out.append(f"{key}={updates[key]}")
+        seen.add(key)
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f"{key}={value}")
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
 fi
 echo -e "  ${GREEN}Done.${NC}"
 
 # 4. Harness skill + MCP config
 echo ""
 echo -e "${GREEN}[5/6]${NC} Installing agent integration..."
+echo "  Warning: some MCP clients store env values in plaintext JSON config files."
+echo "  Prefer shell environment variables or your agent's secret storage if available."
 
 # Read credentials from .env for MCP config.
 CF_ACCOUNT=$(grep -E '^CLOUDFLARE_ACCOUNT_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "")
