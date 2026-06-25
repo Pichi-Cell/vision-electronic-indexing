@@ -18,7 +18,7 @@ Works with any coding agent that supports MCP tools (OpenCode, Claude Code, Code
 
 - **MCP server** configured in your agent's MCP settings pointing to the repository-root `vision_inventory_mcp.py` (see `.universal/configs/`).
 - **Python 3.10+** with dependencies from the repository-root `requirements.txt` installed.
-- **Cloudflare Workers AI credentials** - set in `.env` or in your MCP server's `env` block.
+- **Cloudflare Workers AI API token credentials** - set in `.env` or in your MCP server's `env` block.
 - **Web search capability** - your agent needs a web search/browser tool for datasheet enrichment. This skill does NOT bundle one.
 
 ## Agent Workflow
@@ -65,11 +65,11 @@ The configured MCP server exposes these tools that the agent can call directly:
 |---|---|
 | `process_image` | Analyze a single electronics/PCB image |
 | `process_image_folder` | Batch-analyze a folder of images |
-| `save_inventory` | Save results as JSON or CSV |
+| `save_inventory` | Save results as JSON or quick CSV export; use the deterministic workflow for full BOM/evidence output |
 
 ## Setup
 
-To configure the MCP server, copy the appropriate config from `.universal/configs/`, fill in the path to the repository-root `vision_inventory_mcp.py` and your Cloudflare credentials.
+To configure the MCP server, copy the appropriate config from `.universal/configs/`, fill in the path to the repository-root `vision_inventory_mcp.py` and your Cloudflare credentials. Some MCP clients store env values in plaintext config files; prefer shell environment variables or secret storage if your harness supports them.
 
 Install Python dependencies:
 ```bash

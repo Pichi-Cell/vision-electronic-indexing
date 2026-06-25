@@ -13,9 +13,9 @@ This package intentionally does **not** bundle these dependencies:
 
 - Python packages from `requirements.txt`: `mcp`, `requests`, `pillow`, `python-dotenv`; optional `pillow-heif` for HEIC/HEIF.
 - A Pi web-search/browser tool or skill for datasheet enrichment.
-- Cloudflare Workers AI credentials.
+- Cloudflare Workers AI API token credentials.
 
-Use `/vision-inventory-setup` to configure credentials and check/install Python dependencies. Use `/vision-inventory-credentials` to change stored Cloudflare credentials.
+Use `/vision-inventory-setup` to configure credentials, create/check the Pi-managed Python venv, install Python dependencies when approved, and see the web-search/browser requirement warning. Use `/vision-inventory-credentials` to change stored Cloudflare credentials.
 
 ## Preferred Command
 
