@@ -77,13 +77,23 @@ _Contributed by user [@Brun0-v](https://github.com/Brun0-V)_
 
 This repository also includes a harness-neutral compatibility layer in `.universal/` for MCP-capable coding agents such as OpenCode, Claude Code, Codex CLI, Cursor, and similar clients.
 
-The universal layer does **not** replace the Pi package integration. Pi users should keep using the commands above. Other harnesses can connect directly to the Python MCP server:
+The universal layer does **not** replace the Pi package integration. Pi users should keep using the commands above.
+
+For other harnesses, use the universal installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Pichi-Cell/vision-electronic-indexing-mcp/main/.universal/scripts/quick-install.sh -o /tmp/vei-install.sh && bash /tmp/vei-install.sh
+```
+
+This installs to `~/.vei/`, sets up a Python venv, prompts for Cloudflare credentials, installs the agent skill, and **automatically configures the MCP server** in your agent's settings. **Requires an MCP-capable agent** (OpenCode, Claude Code, Codex CLI, Cursor, etc.).
+
+Other harnesses can also connect directly to the Python MCP server:
 
 ```bash
 python3 /path/to/vision-electronic-indexing-mcp/vision_inventory_mcp.py
 ```
 
-### 1. Install Python dependencies
+### 1. Manual setup: install Python dependencies
 
 From the repository root:
 

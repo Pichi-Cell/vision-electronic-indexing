@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="${REPO:-Pichi-Cell/vision-electronic-indexing-mcp}"
 BRANCH="${BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.vision-electronic-indexing}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.vei}"
 VENV_DIR="$INSTALL_DIR/.venv"
 PYTHON="${PYTHON:-python3}"
 
@@ -39,6 +39,7 @@ if [ -n "$LOCAL_SRC" ]; then
   [ -f "$LOCAL_SRC/.gitignore" ] && cp "$LOCAL_SRC/.gitignore" "$INSTALL_DIR/" || true
   [ -f "$LOCAL_SRC/LICENSE" ] && cp "$LOCAL_SRC/LICENSE" "$INSTALL_DIR/" || true
   cp "$LOCAL_SRC/scripts/inventory_folder_to_csv.py" "$INSTALL_DIR/scripts/"
+  cp "$LOCAL_SRC/.universal/scripts/configure_mcp.py" "$INSTALL_DIR/scripts/"
   for f in "$LOCAL_SRC"/.universal/configs/*.json.example; do
     cp "$f" "$INSTALL_DIR/configs/"
   done
@@ -48,7 +49,9 @@ else
   for f in vision_inventory_mcp.py requirements.txt .env.example .gitignore LICENSE; do
     curl -fsSL "$RAW_BASE/$f" -o "$INSTALL_DIR/$f"
   done
-  curl -fsSL "$RAW_BASE/scripts/inventory_folder_to_csv.py" -o "$INSTALL_DIR/scripts/inventory_folder_to_csv.py"
+  for f in scripts/inventory_folder_to_csv.py .universal/scripts/configure_mcp.py; do
+    curl -fsSL "$RAW_BASE/$f" -o "$INSTALL_DIR/scripts/$(basename "$f")"
+  done
   for f in opencode.json.example claude.json.example codex.json.example cursor.json.example; do
     curl -fsSL "$RAW_BASE/.universal/configs/$f" -o "$INSTALL_DIR/configs/$f"
   done
@@ -76,21 +79,26 @@ if [ ! -f "$ENV_FILE" ]; then
   echo "  Created $ENV_FILE"
 fi
 
-echo "  Get these from https://dash.cloudflare.com/ -> AI -> Workers AI -> Use REST API"
-echo "  Enter your credentials (or press enter to edit .env later):"
-read -rp "  Cloudflare Account ID: " CF_ID || true
-read -rp "  Cloudflare API Token: " CF_TOKEN || true
+CF_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
+CF_TOKEN="${CLOUDFLARE_AUTH_TOKEN:-}"
 
-CF_ID="${CF_ID:-}"
-CF_TOKEN="${CF_TOKEN:-}"
-if [ -n "$CF_ID" ]; then
+if [ -t 0 ] && [ -z "$CF_ID" ]; then
+  echo "  Get these from https://dash.cloudflare.com/ -> AI -> Workers AI -> Use REST API"
+  echo "  Enter your credentials (or press enter to edit .env later):"
+  read -rp "  Cloudflare Account ID: " CF_ID || true
+  read -rp "  Cloudflare API Token: " CF_TOKEN || true
+  CF_ID="${CF_ID:-}"
+  CF_TOKEN="${CF_TOKEN:-}"
+fi
+
+if [ -n "$CF_ID" ] && [ "$CF_ID" != "your_cloudflare_account_id" ]; then
   if [[ "${OSTYPE:-}" == "darwin"* ]]; then
     sed -i '' "s/your_cloudflare_account_id/$CF_ID/" "$ENV_FILE"
   else
     sed -i "s/your_cloudflare_account_id/$CF_ID/" "$ENV_FILE"
   fi
 fi
-if [ -n "$CF_TOKEN" ]; then
+if [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "your_cloudflare_workers_ai_token" ]; then
   if [[ "${OSTYPE:-}" == "darwin"* ]]; then
     sed -i '' "s/your_cloudflare_workers_ai_token/$CF_TOKEN/" "$ENV_FILE"
   else
@@ -99,9 +107,46 @@ if [ -n "$CF_TOKEN" ]; then
 fi
 echo -e "  ${GREEN}Done.${NC}"
 
-# 4. Harness skill install
+# 4. Harness skill + MCP config
 echo ""
-echo -e "${GREEN}[5/6]${NC} Installing skill for your agent..."
+echo -e "${GREEN}[5/6]${NC} Installing agent integration..."
+
+# Read credentials from .env for MCP config.
+CF_ACCOUNT=$(grep -E '^CLOUDFLARE_ACCOUNT_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "")
+CF_TOKEN_VAL=$(grep -E '^CLOUDFLARE_AUTH_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "")
+CF_ACCOUNT="${CF_ACCOUNT:-${CLOUDFLARE_ACCOUNT_ID:-}}"
+CF_TOKEN_VAL="${CF_TOKEN_VAL:-${CLOUDFLARE_AUTH_TOKEN:-}}"
+
+CONFIGURE="$VENV_DIR/bin/python $INSTALL_DIR/scripts/configure_mcp.py"
+
+setup_opencode() {
+  local cfg="$HOME/.config/opencode/opencode.json"
+  mkdir -p "$(dirname "$cfg")"
+  [ -f "$cfg" ] || echo '{}' > "$cfg"
+  $CONFIGURE "$cfg" opencode "$VENV_DIR/bin/python" "$INSTALL_DIR/vision_inventory_mcp.py" "$CF_ACCOUNT" "$CF_TOKEN_VAL"
+}
+
+setup_claude() {
+  local cfg="$HOME/.claude/settings.json"
+  mkdir -p "$(dirname "$cfg")"
+  [ -f "$cfg" ] || echo '{}' > "$cfg"
+  $CONFIGURE "$cfg" claude "$VENV_DIR/bin/python" "$INSTALL_DIR/vision_inventory_mcp.py" "$CF_ACCOUNT" "$CF_TOKEN_VAL"
+}
+
+setup_codex() {
+  local cfg="$HOME/.codex/settings.json"
+  mkdir -p "$(dirname "$cfg")"
+  [ -f "$cfg" ] || echo '{}' > "$cfg"
+  $CONFIGURE "$cfg" codex "$VENV_DIR/bin/python" "$INSTALL_DIR/vision_inventory_mcp.py" "$CF_ACCOUNT" "$CF_TOKEN_VAL"
+}
+
+setup_cursor() {
+  local cfg="$HOME/.cursor/mcp.json"
+  mkdir -p "$(dirname "$cfg")"
+  [ -f "$cfg" ] || echo '{}' > "$cfg"
+  $CONFIGURE "$cfg" cursor "$VENV_DIR/bin/python" "$INSTALL_DIR/vision_inventory_mcp.py" "$CF_ACCOUNT" "$CF_TOKEN_VAL"
+}
+
 install_skill() {
   local target="$1"
   mkdir -p "$(dirname "$target")"
@@ -113,17 +158,30 @@ echo "  Which agent are you using?"
 echo "    1) OpenCode"
 echo "    2) Claude Code"
 echo "    3) Codex CLI"
-echo "    4) Pi (original package)"
-echo "    5) All of the above"
-echo "    6) Skip (I'll install manually)"
-read -rp "  Choice [1-6]: " AGENT_CHOICE || true
+echo "    4) Cursor"
+echo "    5) Pi (original — uses Pi npm package)"
+echo "    6) All of the above"
+echo "    7) Skip (I'll configure manually)"
+read -rp "  Choice [1-7]: " AGENT_CHOICE || true
 
 AGENT_CHOICE="${AGENT_CHOICE:-}"
 case "$AGENT_CHOICE" in
-  1) install_skill "$HOME/.config/opencode/skills/vision-inventory-workflow/SKILL.md" ;;
-  2) install_skill "$HOME/.claude/skills/vision-inventory-workflow/SKILL.md" ;;
-  3) install_skill "$HOME/.agents/skills/vision-inventory-workflow/SKILL.md" ;;
+  1)
+    setup_opencode
+    install_skill "$HOME/.config/opencode/skills/vision-inventory-workflow/SKILL.md"
+    ;;
+  2)
+    setup_claude
+    install_skill "$HOME/.claude/skills/vision-inventory-workflow/SKILL.md"
+    ;;
+  3)
+    setup_codex
+    install_skill "$HOME/.agents/skills/vision-inventory-workflow/SKILL.md"
+    ;;
   4)
+    setup_cursor
+    ;;
+  5)
     echo -e "  ${CYAN}Pi install:${NC} pi install npm:vision-electronic-indexing-pi"
     if command -v pi &>/dev/null; then
       pi install npm:vision-electronic-indexing-pi
@@ -132,7 +190,11 @@ case "$AGENT_CHOICE" in
       echo "  pi install npm:vision-electronic-indexing-pi"
     fi
     ;;
-  5)
+  6)
+    setup_opencode
+    setup_claude
+    setup_codex
+    setup_cursor
     install_skill "$HOME/.config/opencode/skills/vision-inventory-workflow/SKILL.md"
     install_skill "$HOME/.claude/skills/vision-inventory-workflow/SKILL.md"
     install_skill "$HOME/.agents/skills/vision-inventory-workflow/SKILL.md"
@@ -143,22 +205,13 @@ case "$AGENT_CHOICE" in
   *) echo "  Skipping." ;;
 esac
 
-# 5. Summary
+# 6. Summary
 echo ""
 echo -e "${GREEN}[6/6]${NC} Setup complete!"
 echo ""
-echo -e "  ${CYAN}Installed to:${NC}       $INSTALL_DIR"
-echo -e "  ${CYAN}Run server:${NC}         $VENV_DIR/bin/python $INSTALL_DIR/vision_inventory_mcp.py"
-echo -e "  ${CYAN}Activate env:${NC}       source $VENV_DIR/bin/activate"
-echo -e "  ${CYAN}Edit credentials:${NC}   $ENV_FILE"
-echo ""
-echo "  Add the MCP server config to your agent:"
-echo ""
-echo "  OpenCode:  cp $INSTALL_DIR/configs/opencode.json.example <project>/.opencode/opencode.json"
-echo "  Claude:    cp $INSTALL_DIR/configs/claude.json.example <project>/.claude/settings.json"
-echo "  Codex CLI: cp $INSTALL_DIR/configs/codex.json.example <project>/.codex/settings.json"
-echo "  Cursor:    cp $INSTALL_DIR/configs/cursor.json.example <project>/.cursor/mcp.json"
-echo ""
-echo "  Make sure the path to vision_inventory_mcp.py and credentials are correct in the config."
+echo -e "  ${CYAN}VEI installed to:${NC}    $INSTALL_DIR"
+echo -e "  ${CYAN}MCP server:${NC}          $VENV_DIR/bin/python $INSTALL_DIR/vision_inventory_mcp.py"
+echo -e "  ${CYAN}Credentials:${NC}         $ENV_FILE"
+echo -e "  ${CYAN}Activate env:${NC}        source $VENV_DIR/bin/activate"
 echo ""
 echo -e "${CYAN}=== Done ===${NC}"
